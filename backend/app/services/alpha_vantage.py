@@ -14,9 +14,25 @@ from pydantic import ValidationError
 
 from app.config import get_settings
 from app.models.financial import CompanyOverview, StockQuote
+from app.services.cache import TTLCache
+from app.services.rate_limiter import MinIntervalRateLimiter
 
 ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
 REQUEST_TIMEOUT_S = 10.0
+
+# Upstream is documented at 1 req/sec burst + 25 req/day quota on the free tier.
+# The throttle protects against the burst limit; the cache protects against the
+# daily quota (and makes repeat hits on the same ticker effectively free).
+# 1.2s leaves a small safety margin over Alpha Vantage's strict 1-req-per-second
+# counting (network jitter / clock skew can otherwise push two requests inside
+# the same server-side 1s window).
+MIN_REQUEST_INTERVAL_S = 1.2
+QUOTE_TTL_S = 60.0          # GLOBAL_QUOTE changes intraday; 1 min is a safe window
+OVERVIEW_TTL_S = 86_400.0   # OVERVIEW (fundamentals) refreshes ~daily at most
+
+_rate_limiter = MinIntervalRateLimiter(MIN_REQUEST_INTERVAL_S)
+_quote_cache: TTLCache[StockQuote] = TTLCache(QUOTE_TTL_S)
+_overview_cache: TTLCache[CompanyOverview] = TTLCache(OVERVIEW_TTL_S)
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +81,7 @@ def _resolve_api_key() -> str:
 
 
 def _request(params: dict[str, str]) -> dict[str, Any]:
+    _rate_limiter.wait()
     try:
         response = httpx.get(ALPHA_VANTAGE_URL, params=params, timeout=REQUEST_TIMEOUT_S)
     except httpx.TimeoutException as exc:
@@ -100,21 +117,45 @@ def _request(params: dict[str, str]) -> dict[str, Any]:
 # --- Public API --------------------------------------------------------------
 
 def fetch_global_quote(ticker: str) -> StockQuote:
-    payload = _request({"function": "GLOBAL_QUOTE", "symbol": ticker, "apikey": _resolve_api_key()})
+    key = ticker.upper()
+    cached = _quote_cache.get(key)
+    if cached is not None:
+        log.info("Cache hit: GLOBAL_QUOTE %s", key)
+        return cached
+
+    payload = _request({"function": "GLOBAL_QUOTE", "symbol": key, "apikey": _resolve_api_key()})
     raw = payload.get("Global Quote") or {}
     if not raw:
         raise InvalidTickerError(ticker)
     try:
-        return StockQuote.model_validate(raw)
+        quote = StockQuote.model_validate(raw)
     except ValidationError as exc:
         raise MalformedResponseError(f"StockQuote validation failed: {exc}") from exc
 
+    _quote_cache.set(key, quote)
+    return quote
+
 
 def fetch_company_overview(ticker: str) -> CompanyOverview:
-    payload = _request({"function": "OVERVIEW", "symbol": ticker, "apikey": _resolve_api_key()})
+    key = ticker.upper()
+    cached = _overview_cache.get(key)
+    if cached is not None:
+        log.info("Cache hit: OVERVIEW %s", key)
+        return cached
+
+    payload = _request({"function": "OVERVIEW", "symbol": key, "apikey": _resolve_api_key()})
     if not payload.get("Symbol"):
         raise InvalidTickerError(ticker)
     try:
-        return CompanyOverview.model_validate(payload)
+        overview = CompanyOverview.model_validate(payload)
     except ValidationError as exc:
         raise MalformedResponseError(f"CompanyOverview validation failed: {exc}") from exc
+
+    _overview_cache.set(key, overview)
+    return overview
+
+
+def clear_caches() -> None:
+    """Test/debug helper: drop all cached payloads."""
+    _quote_cache.clear()
+    _overview_cache.clear()

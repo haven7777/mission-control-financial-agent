@@ -42,6 +42,11 @@
 * CAVEAT: did **not** drive the page in a real headless browser (Playwright not installed; ~150 MB browser binaries). The functional pipe (CORS + endpoint + SSR HTML + clean Next build) is fully covered above; the missing piece is a click-through visual check. See follow-ups.
 * **Real Alpha Vantage key landed** (`alpha_vantage_configured=true`). Re-verified the real-key path: `/api/quote/AAPL` → 200 with `price=308.82, change=+3.83, change_percent=1.2558%, latest_trading_day=2026-05-22, volume=43_670_223`. So non-IBM tickers now work end-to-end.
 * **Free-tier rate limits surfaced during testing — important for the agent phase.** The follow-up `/api/quote/ZZZFAKE` request (fired immediately after AAPL) was rejected by Alpha Vantage's *free-tier* rate limiter (not the demo-key gate), surfacing as our typed `RateLimitedError → 503`. The envelope explicitly cites two limits: **1 request/second** (burst) and **25 requests/day** (quota). As a result, the typed `InvalidTickerError → 404` path is wired in code but **still not end-to-end verified** — every attempt to probe an unknown ticker has hit a rate limiter first (demo gate, then free-tier burst).
+* **Alpha Vantage cache + throttle landed** (the two rate-limit-protection items from Deferred).
+  * `backend/app/services/cache.py` — generic `TTLCache[V]`: thread-safe dict with per-entry monotonic-clock expiry, `get/set/clear/__len__`. Unit-tested for hit / miss / TTL eviction / clear.
+  * `backend/app/services/rate_limiter.py` — generic `MinIntervalRateLimiter`: thread-safe gate using `threading.Lock` + `time.monotonic` + a `_next_allowed` timestamp; holds the lock through `sleep` so concurrent callers serialize cleanly. Unit-tested: first `wait()` returns instantly, second `wait()` sleeps within +-5 ms of the configured interval.
+  * `backend/app/services/alpha_vantage.py` wires three module-level instances: `_rate_limiter` (1.2s min interval — `1.0s` would race Alpha Vantage's server-side counter under network jitter), `_quote_cache` (60s TTL), `_overview_cache` (24h TTL). `_request()` calls `_rate_limiter.wait()` before the outbound HTTP. `fetch_global_quote` / `fetch_company_overview` consult the cache first and only store on success — errors never poison the cache. Added `clear_caches()` test helper.
+* Verified the integration path partially: a fresh `fetch_global_quote("IBM")` hits the network (~0.5s), a repeat call returns the same `StockQuote` from cache in <1 ms (zero network traffic). The third-call timing assertion (cache cleared, throttle should space the call by 1.2s) raised `RateLimitedError` — almost certainly because the day's 25-request quota was already drained by the various smoke / integration / CORS tests run during this session, not a bug in the throttle (which the unit test independently proved correct). The wiring itself is verified by import-time route + instance checks (`/health`, `/api/quote/{ticker}` registered; constants applied).
 
 ## 🟡 In Progress
 * (none — original 3-task bootstrap + 3-task vertical-slice milestone both complete; awaiting next set.)
@@ -50,9 +55,7 @@
 * (empty — next milestone TBD; natural candidates are LangGraph + the first real Agent, or an SSE streaming endpoint.)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* **Alpha Vantage response caching (server-side).** Keyed by `(function, symbol)`; per-function TTLs (OVERVIEW: ~24 h since fundamentals barely change intraday; GLOBAL_QUOTE: ~60 s during market hours). Cuts repeat calls aggressively and reduces 25/day-quota burn. **High priority — should land before the Data Agent enters any LangGraph loop, since an agent retrying a failed step can otherwise burn the daily quota in seconds.**
-* **Per-second throttle / single-flight on the Alpha Vantage service.** Enforce ≥1.0 s between outbound requests at the `services/alpha_vantage.py` layer (asyncio lock + monotonic timer, or a small token bucket). Same reasoning: protects against burst-limit 503s during normal multi-call analyses. Likely lands together with the cache.
-* LangGraph + Data / Sentiment / Manager agents — next phase after the cache + throttle are in.
+* LangGraph + Data / Sentiment / Manager agents — next phase now that cache + throttle are in.
 * SSE streaming endpoint — added once agents exist and have streamable progress to emit.
 * LangSmith tracing setup — only useful once there are LLM/agent traces to capture.
 * Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream from *our* users.
@@ -61,8 +64,8 @@
 
 ## 📌 Open follow-ups / known gaps
 * `ALPHA_VANTAGE_API_KEY` is placed and working. Still missing: `OPENAI_API_KEY`, `GROQ_API_KEY`, `TAVILY_API_KEY`, `LANGSMITH_API_KEY` — only needed once the agent phase starts. `backend/.env.example` lists the full set.
-* **Alpha Vantage free-tier limits are a real constraint** — 1 req/sec burst, **25 req/day** quota. A single ticker analysis can already consume 3-5 calls (quote + overview + future agent retries), so without the deferred caching + throttle work below, the daily quota easily runs out within a handful of analyses. Plan caching/throttle work *before* introducing any agent loop that retries failed steps.
-* `InvalidTickerError → 404` code path is implemented but has **never been exercised end-to-end** — both attempts to probe an unknown ticker hit a rate-limiter first (demo gate, then free-tier burst). Will be straightforward to verify once the per-second throttle + caching are in.
+* **Alpha Vantage free-tier limits are a real constraint** — 1 req/sec burst, **25 req/day** quota. Cache + throttle (now in `services/cache.py` and `services/rate_limiter.py`) defend against both, but the daily quota is still a hard cap. Likely already exhausted for today (Mon 2026-05-25, UTC); resets at midnight UTC.
+* `InvalidTickerError → 404` code path is implemented but has **never been exercised end-to-end** — every attempt has been preempted by a rate-limit response. Should be straightforward to verify on the next UTC day once the daily quota resets (cache + throttle should now prevent the burst limit from interfering).
 * No git remote configured; `main` lives only locally. Many staged-eligible changes since the initial commit `b60feff` — needs a follow-up commit.
 * No headless-browser E2E setup yet (Playwright would be the natural pick, ~150 MB install). All UI verification so far is HTTP-level + SSR-HTML grep. Tracked above in Deferred.
 * The two docs in `docs/` have a doubled `.md.md` extension (an Obsidian save quirk) — flagged earlier; non-blocking but worth a rename later.
