@@ -56,6 +56,11 @@
 * **🚨 Security fix: stopped Alpha Vantage API key from leaking via `httpx` logs.** During the agent's first live run, `httpx`'s default INFO-level "HTTP Request: GET <full-url>" log included `apikey=<real key>` in the URL (Alpha Vantage only authenticates via query string). The key appeared in stdout / shell scrollback / this session's tool output. Mitigation:
   * `app/main.py`, `scripts/test_data_agent.py`, `scripts/test_fetch.py` all now set `logging.getLogger("httpx").setLevel(WARNING)` (also `httpcore`) so request URLs no longer print at INFO. Verified by re-running: the next invocation log shows only our own structured `data_agent: fetching ticker=IBM` line + the typed error, no URL.
   * **Action item for the user (also in follow-ups below):** rotate the leaked key — generate a new one at alphavantage.co, replace the value in `backend/.env`, restart the backend.
+* **Tavily news-search service landed** (first half of the Sentiment Agent work; LLM half next).
+  * `backend/app/models/news.py` — `NewsArticle` (title, url, content, score, optional `published_date`) and `NewsSearchResult` (query + list of articles). Provider-agnostic so we can swap Tavily later if needed.
+  * `backend/app/services/tavily.py` — POSTs to `api.tavily.com/search` via httpx (the API key sits in the request body, not the URL, so it can't leak through URL logs even if httpx logging were re-enabled). Typed exception hierarchy: `NewsFetchError` base, plus `NewsTimeoutError`, `NewsHTTPError`, `NewsRateLimitedError` (handles upstream 429), `MalformedNewsResponseError`, `MissingNewsAPIKey`. Public surface: `search(query, *, max_results=5, search_depth="basic") -> NewsSearchResult`. Per-article validation tolerates malformed entries (logs + drops) rather than failing the whole result. Defensive 0.25s throttle via the shared `MinIntervalRateLimiter`.
+  * `backend/scripts/test_tavily.py` — runnable smoke test with optional CLI query arg.
+* Verified live: `IBM stock news` query returned 5 articles (Yahoo Finance, Robinhood, CNN, Morningstar, CNBC) with relevance scores 0.76-0.81; Morningstar entry referenced IBM's 2026-05-21 quantum chip foundry announcement, confirming the search index is fresh.
 
 ## 🟡 In Progress
 * (none — original 3-task bootstrap + 3-task vertical-slice milestone both complete; awaiting next set.)
