@@ -17,6 +17,11 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# httpx logs full request URLs (incl. query params) at INFO, which would leak
+# `apikey=...` for Alpha Vantage. Silence it; we surface upstream errors via
+# our own typed exceptions / structured logs instead.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 log = logging.getLogger("app")
 
 settings = get_settings()

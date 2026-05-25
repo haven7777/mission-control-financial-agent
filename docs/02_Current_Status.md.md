@@ -47,6 +47,15 @@
   * `backend/app/services/rate_limiter.py` — generic `MinIntervalRateLimiter`: thread-safe gate using `threading.Lock` + `time.monotonic` + a `_next_allowed` timestamp; holds the lock through `sleep` so concurrent callers serialize cleanly. Unit-tested: first `wait()` returns instantly, second `wait()` sleeps within +-5 ms of the configured interval.
   * `backend/app/services/alpha_vantage.py` wires three module-level instances: `_rate_limiter` (1.2s min interval — `1.0s` would race Alpha Vantage's server-side counter under network jitter), `_quote_cache` (60s TTL), `_overview_cache` (24h TTL). `_request()` calls `_rate_limiter.wait()` before the outbound HTTP. `fetch_global_quote` / `fetch_company_overview` consult the cache first and only store on success — errors never poison the cache. Added `clear_caches()` test helper.
 * Verified the integration path partially: a fresh `fetch_global_quote("IBM")` hits the network (~0.5s), a repeat call returns the same `StockQuote` from cache in <1 ms (zero network traffic). The third-call timing assertion (cache cleared, throttle should space the call by 1.2s) raised `RateLimitedError` — almost certainly because the day's 25-request quota was already drained by the various smoke / integration / CORS tests run during this session, not a bug in the throttle (which the unit test independently proved correct). The wiring itself is verified by import-time route + instance checks (`/health`, `/api/quote/{ticker}` registered; constants applied).
+* **First LangGraph agent — Data Agent — landed.**
+  * `backend/app/models/agents.py` — `DataAgentReport` Pydantic model with `ticker`, validated `StockQuote`, validated `CompanyOverview`, UTC `fetched_at`, plus derived properties `market_cap_billions` and `is_within_52_week_band`. `extra="forbid"` ensures no untyped data crosses the agent boundary.
+  * `backend/app/agents/__init__.py` package marker.
+  * `backend/app/agents/data_agent.py` — single-node LangGraph 1.x graph (`CompiledStateGraph`): Pydantic `_DataAgentState` schema, one `_fetch_node` that calls the protected `fetch_global_quote` + `fetch_company_overview` (cache + throttle still in effect), graph compiled once at import. Public surface: `run_data_agent(ticker) -> DataAgentReport`. No LLM yet (deferred — needs OpenAI/Groq).
+  * `backend/scripts/test_data_agent.py` — runnable smoke test (`backend/venv/bin/python backend/scripts/test_data_agent.py IBM`) — invokes the agent, prints the typed report.
+* Verified the agent: import-time validation shows the graph compiles to `CompiledStateGraph`; state has `[ticker, quote, overview]`; report has `[ticker, quote, overview, fetched_at]` + derived properties. Live IBM invocation reached the upstream service and ran both fetches with the 1.2s throttle correctly spacing them, but the second response carried the daily-quota `RateLimitedError` envelope — the agent surfaced it cleanly as a typed exception (PASS for the unhappy path; the happy-path report shape stays unverified until the quota resets at 00:00 UTC).
+* **🚨 Security fix: stopped Alpha Vantage API key from leaking via `httpx` logs.** During the agent's first live run, `httpx`'s default INFO-level "HTTP Request: GET <full-url>" log included `apikey=<real key>` in the URL (Alpha Vantage only authenticates via query string). The key appeared in stdout / shell scrollback / this session's tool output. Mitigation:
+  * `app/main.py`, `scripts/test_data_agent.py`, `scripts/test_fetch.py` all now set `logging.getLogger("httpx").setLevel(WARNING)` (also `httpcore`) so request URLs no longer print at INFO. Verified by re-running: the next invocation log shows only our own structured `data_agent: fetching ticker=IBM` line + the typed error, no URL.
+  * **Action item for the user (also in follow-ups below):** rotate the leaked key — generate a new one at alphavantage.co, replace the value in `backend/.env`, restart the backend.
 
 ## 🟡 In Progress
 * (none — original 3-task bootstrap + 3-task vertical-slice milestone both complete; awaiting next set.)
@@ -55,7 +64,14 @@
 * (empty — next milestone TBD; natural candidates are LangGraph + the first real Agent, or an SSE streaming endpoint.)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* LangGraph + Data / Sentiment / Manager agents — next phase now that cache + throttle are in.
+* **LLM-enabled Data Agent step** — add a small LLM call inside the graph that normalizes / summarizes the structured `DataAgentReport` (currently pure fetcher). Needs an `OPENAI_API_KEY` or `GROQ_API_KEY` in `backend/.env`.
+* Sentiment Agent (Tavily-based news fetch + classification) — needs `TAVILY_API_KEY` and an LLM key.
+* Manager Agent — orchestrates Data + Sentiment, produces the final report.
+* SSE streaming endpoint — once multi-agent flow exists and has progress to emit.
+* LangSmith tracing setup — once there are LLM/agent traces to capture.
+* Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs.
+* Headless-browser E2E (Playwright) — before the UI grows past a single page.
+* Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.
 * SSE streaming endpoint — added once agents exist and have streamable progress to emit.
 * LangSmith tracing setup — only useful once there are LLM/agent traces to capture.
 * Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream from *our* users.
@@ -63,7 +79,8 @@
 * Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.
 
 ## 📌 Open follow-ups / known gaps
-* `ALPHA_VANTAGE_API_KEY` is placed and working. Still missing: `OPENAI_API_KEY`, `GROQ_API_KEY`, `TAVILY_API_KEY`, `LANGSMITH_API_KEY` — only needed once the agent phase starts. `backend/.env.example` lists the full set.
+* **🚨 Rotate the leaked `ALPHA_VANTAGE_API_KEY`** — the original key was exposed via `httpx`'s INFO-level URL logging during the Data Agent's first live run (now suppressed in code, but the previously-printed value should be treated as compromised). Replace in `backend/.env` after generating a new one at alphavantage.co; restart the backend.
+* Still missing keys for upcoming agent work: `OPENAI_API_KEY` (or `GROQ_API_KEY`), `TAVILY_API_KEY`, `LANGSMITH_API_KEY`. `backend/.env.example` lists the full set.
 * **Alpha Vantage free-tier limits are a real constraint** — 1 req/sec burst, **25 req/day** quota. Cache + throttle (now in `services/cache.py` and `services/rate_limiter.py`) defend against both, but the daily quota is still a hard cap. Likely already exhausted for today (Mon 2026-05-25, UTC); resets at midnight UTC.
 * `InvalidTickerError → 404` code path is implemented but has **never been exercised end-to-end** — every attempt has been preempted by a rate-limit response. Should be straightforward to verify on the next UTC day once the daily quota resets (cache + throttle should now prevent the burst limit from interfering).
 * No git remote configured; `main` lives only locally. Many staged-eligible changes since the initial commit `b60feff` — needs a follow-up commit.
