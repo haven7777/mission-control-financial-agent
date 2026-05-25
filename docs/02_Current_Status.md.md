@@ -61,6 +61,12 @@
   * `backend/app/services/tavily.py` — POSTs to `api.tavily.com/search` via httpx (the API key sits in the request body, not the URL, so it can't leak through URL logs even if httpx logging were re-enabled). Typed exception hierarchy: `NewsFetchError` base, plus `NewsTimeoutError`, `NewsHTTPError`, `NewsRateLimitedError` (handles upstream 429), `MalformedNewsResponseError`, `MissingNewsAPIKey`. Public surface: `search(query, *, max_results=5, search_depth="basic") -> NewsSearchResult`. Per-article validation tolerates malformed entries (logs + drops) rather than failing the whole result. Defensive 0.25s throttle via the shared `MinIntervalRateLimiter`.
   * `backend/scripts/test_tavily.py` — runnable smoke test with optional CLI query arg.
 * Verified live: `IBM stock news` query returned 5 articles (Yahoo Finance, Robinhood, CNN, Morningstar, CNBC) with relevance scores 0.76-0.81; Morningstar entry referenced IBM's 2026-05-21 quantum chip foundry announcement, confirming the search index is fresh.
+* **Sentiment Agent landed (LLM half).**
+  * `langchain-groq==1.1.2` (pulls `groq==0.37.1`) added to `requirements.txt`. New `groq_model` setting (defaults to `llama-3.3-70b-versatile`) added to `app/config.py`.
+  * `backend/app/models/sentiment.py` — `Sentiment` enum (bullish / bearish / neutral), `ArticleSentiment` (article_index + sentiment + confidence 0-1 + one-sentence reason), `SentimentClassificationBatch` (LLM-facing structured-output schema), `ClassifiedArticle` (article + classification pair), `SentimentAgentReport` (final agent output: ticker, query, articles_analyzed, overall_sentiment, overall_confidence, list of `ClassifiedArticle`, UTC `fetched_at`). All `extra="forbid"` where applicable to enforce the architecture's strict-Pydantic-between-steps rule.
+  * `backend/app/agents/sentiment_agent.py` — two-node LangGraph (`fetch_news → classify`) over a Pydantic `_SentimentAgentState`. `fetch_news` calls the typed Tavily service. `classify` instantiates `ChatGroq(temperature=0.0)` and uses LangChain's `with_structured_output(SentimentClassificationBatch)` so the LLM is forced into the Pydantic shape — any drift surfaces as a `ValidationError`. Defensive index-alignment fills missing classifications as `neutral / confidence=0.0` rather than crashing. New typed errors: `SentimentAgentError` base, `MissingLLMKey`, `NoArticlesFoundError`. Public surface: `run_sentiment_agent(ticker) -> SentimentAgentReport`.
+  * `backend/scripts/test_sentiment_agent.py` — runnable smoke test with optional ticker arg.
+* Verified live on IBM (~2.1 s end-to-end): 5 articles analyzed; overall `neutral` with 0.64 confidence; mixed 3-neutral / 2-bullish breakdown. Substantive classifications — Morningstar entry got `bullish 0.90` for the quantum-foundry news, generic stock-quote pages correctly got `neutral`. The LLM-generated `reason` fields are grounded in article snippets, not keyword guesses.
 
 ## 🟡 In Progress
 * (none — original 3-task bootstrap + 3-task vertical-slice milestone both complete; awaiting next set.)
@@ -69,12 +75,12 @@
 * (empty — next milestone TBD; natural candidates are LangGraph + the first real Agent, or an SSE streaming endpoint.)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* **LLM-enabled Data Agent step** — add a small LLM call inside the graph that normalizes / summarizes the structured `DataAgentReport` (currently pure fetcher). Needs an `OPENAI_API_KEY` or `GROQ_API_KEY` in `backend/.env`.
-* Sentiment Agent (Tavily-based news fetch + classification) — needs `TAVILY_API_KEY` and an LLM key.
-* Manager Agent — orchestrates Data + Sentiment, produces the final report.
-* SSE streaming endpoint — once multi-agent flow exists and has progress to emit.
-* LangSmith tracing setup — once there are LLM/agent traces to capture.
-* Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs.
+* **Manager Agent** — orchestrates Data + Sentiment, performs LLM-driven synthesis into the final structured JSON report. The natural next major step now that 2 of 3 agents exist.
+* **Expose agents via FastAPI** — `POST /api/analyze/{ticker}` that runs the Data + Sentiment (later: Manager) pipeline and returns the combined report. Lets the existing Next.js page point at it.
+* **Frontend UI for the full report** — extend `page.tsx` beyond the quote card to show the sentiment summary + per-article breakdown.
+* SSE streaming endpoint — once multi-agent flow exists and has progress to emit (the user feels the 15-45s "thinking" otherwise).
+* LangSmith tracing setup — useful now that LLM calls exist; mostly env-var configuration plus `LANGSMITH_API_KEY`.
+* Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream costs from runaway calls.
 * Headless-browser E2E (Playwright) — before the UI grows past a single page.
 * Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.
 * SSE streaming endpoint — added once agents exist and have streamable progress to emit.

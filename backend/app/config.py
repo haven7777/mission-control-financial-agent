@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     alpha_vantage_api_key: str | None = None
     tavily_api_key: str | None = None
 
+    # LLM model selection
+    groq_model: str = Field(
+        default="llama-3.3-70b-versatile",
+        description="Groq model used for sentiment classification.",
+    )
+
     # LangSmith tracing
     langsmith_api_key: str | None = None
     langsmith_tracing: bool = False
