@@ -18,3 +18,6 @@ backend/venv/
 # Editor
 .vscode/
 .idea/
+
+# Accidental project-root Obsidian vault (the real vault lives in docs/)
+/.obsidian/
