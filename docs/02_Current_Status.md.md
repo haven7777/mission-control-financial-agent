@@ -67,6 +67,15 @@
   * `backend/app/agents/sentiment_agent.py` — two-node LangGraph (`fetch_news → classify`) over a Pydantic `_SentimentAgentState`. `fetch_news` calls the typed Tavily service. `classify` instantiates `ChatGroq(temperature=0.0)` and uses LangChain's `with_structured_output(SentimentClassificationBatch)` so the LLM is forced into the Pydantic shape — any drift surfaces as a `ValidationError`. Defensive index-alignment fills missing classifications as `neutral / confidence=0.0` rather than crashing. New typed errors: `SentimentAgentError` base, `MissingLLMKey`, `NoArticlesFoundError`. Public surface: `run_sentiment_agent(ticker) -> SentimentAgentReport`.
   * `backend/scripts/test_sentiment_agent.py` — runnable smoke test with optional ticker arg.
 * Verified live on IBM (~2.1 s end-to-end): 5 articles analyzed; overall `neutral` with 0.64 confidence; mixed 3-neutral / 2-bullish breakdown. Substantive classifications — Morningstar entry got `bullish 0.90` for the quantum-foundry news, generic stock-quote pages correctly got `neutral`. The LLM-generated `reason` fields are grounded in article snippets, not keyword guesses.
+* **Manager Agent landed — 3-of-3 agents now built.**
+  * `backend/app/models/manager.py` — `OverallView` enum (positive / negative / mixed / neutral), `ManagerSynthesis` (LLM-facing structured-output schema: `overall_view`, `one_line_summary`, `key_strengths` 1-5 items, `key_risks` 1-5 items), and the public `FinalReport` (synthesis flattened + full `data_snapshot` + `sentiment_snapshot` + `model_used` + UTC `generated_at`). `FinalReport.extra="forbid"`.
+  * `backend/app/agents/manager_agent.py` — single-node LangGraph (`synthesize`) over a Pydantic `_ManagerAgentState`. Two prompt-formatting helpers distill the rich `DataAgentReport` and `SentimentAgentReport` into LLM-readable prose (company / sector / price / fundamentals / 52-week-band + sentiment overview + per-article breakdown). Public surface: `run_manager_agent(data, sentiment) -> FinalReport`. Mismatched-ticker guard at the entry point.
+  * `backend/scripts/test_manager_agent.py` — runnable end-to-end pipeline test. Tries the live Data Agent first; on `DataFetchError` (e.g. Alpha Vantage daily quota exhausted) falls back to a hand-crafted IBM stub so the Manager's synthesis can still be exercised. Runs Sentiment Agent live, then Manager Agent, prints the final report.
+* **Discovered + worked around two Groq structured-output quirks.**
+  1. Default `method="function_calling"` produces a `<function=ManagerSynthesis>{...}</function>` wrapper, and `llama-3.3-70b-versatile` occasionally drops the closing `]` of a list inside that wrapper → Groq's API rejects the whole response with `tool_use_failed` even though the inner content is fine. Reproduced once.
+  2. `method="json_schema"` (Groq's strict structured-output API) is rejected by `llama-3.3-70b-versatile` (`This model does not support response format 'json_schema'`). Only Llama-4 / GPT-OSS class models on Groq support it.
+  3. Resolution: both Sentiment and Manager agents now use `method="json_mode"`, with their system prompts updated to explicitly request a JSON object (Groq's `json_object` mode requires the word "JSON" in the messages). Pydantic validates the output client-side.
+* Verified live (~4.0 s end-to-end pipeline): full Data-stub → Sentiment(live) → Manager(live) run for IBM produced a balanced `MIXED` view, four substantive `key_strengths` (dividend, beta, analyst target, sector position) and four substantive `key_risks` (P/E interpretation, 52-week-band positioning, neutral sentiment caveat, sector competition). All bullets traceable back to either the data snapshot or the sentiment classifications — no hallucinated facts.
 
 ## 🟡 In Progress
 * (none — original 3-task bootstrap + 3-task vertical-slice milestone both complete; awaiting next set.)
@@ -75,9 +84,8 @@
 * (empty — next milestone TBD; natural candidates are LangGraph + the first real Agent, or an SSE streaming endpoint.)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* **Manager Agent** — orchestrates Data + Sentiment, performs LLM-driven synthesis into the final structured JSON report. The natural next major step now that 2 of 3 agents exist.
-* **Expose agents via FastAPI** — `POST /api/analyze/{ticker}` that runs the Data + Sentiment (later: Manager) pipeline and returns the combined report. Lets the existing Next.js page point at it.
-* **Frontend UI for the full report** — extend `page.tsx` beyond the quote card to show the sentiment summary + per-article breakdown.
+* **Pipeline graph + FastAPI endpoint** — wrap Data + Sentiment + Manager in a single LangGraph that fans out to Data and Sentiment in parallel and joins at Manager. Expose as `POST /api/analyze/{ticker}` returning the `FinalReport`.
+* **Frontend UI for the full report** — extend `page.tsx` to render the synthesis card (overall view + headline + strengths + risks) alongside the existing quote card and the new sentiment breakdown.
 * SSE streaming endpoint — once multi-agent flow exists and has progress to emit (the user feels the 15-45s "thinking" otherwise).
 * LangSmith tracing setup — useful now that LLM calls exist; mostly env-var configuration plus `LANGSMITH_API_KEY`.
 * Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream costs from runaway calls.

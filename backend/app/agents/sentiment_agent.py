@@ -42,9 +42,11 @@ SYSTEM_PROMPT = (
     "  - 'bullish': positive outlook, good news, growth, beats, etc.\n"
     "  - 'bearish': negative outlook, concerns, downgrades, declines, etc.\n"
     "  - 'neutral': informational, mixed, or no clear directional impact.\n\n"
-    "For each article return: article_index (0-based), sentiment, "
-    "confidence (0.0-1.0, your own confidence in the classification), "
-    "and a one-sentence reason. Return one entry per article, in order."
+    "Respond as a JSON object matching this schema:\n"
+    '  {"classifications": [{"article_index": <int>, "sentiment": '
+    '"bullish"|"bearish"|"neutral", "confidence": <0.0-1.0>, '
+    '"reason": "<one sentence>"}, ...]}\n'
+    "Return one entry per article, in order."
 )
 
 
@@ -97,7 +99,13 @@ def _classify_node(state: _SentimentAgentState) -> dict:
         api_key=settings.groq_api_key,
         temperature=0.0,
     )
-    structured = llm.with_structured_output(SentimentClassificationBatch)
+    # `method="json_mode"` keeps us compatible with models that don't expose
+    # strict `json_schema` mode (e.g. llama-3.3-70b-versatile). Groq returns
+    # raw JSON; Pydantic validates it client-side against
+    # `SentimentClassificationBatch`.
+    structured = llm.with_structured_output(
+        SentimentClassificationBatch, method="json_mode"
+    )
 
     user_payload = "\n\n".join(
         f"[{i}] Title: {a.title}\nSnippet: {a.content.strip()[:600]}"
