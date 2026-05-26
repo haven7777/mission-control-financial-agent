@@ -94,21 +94,23 @@
   * Parallel execution observed in logs — `pipeline: data node` and `pipeline: sentiment node` started at the same wall-clock timestamp; Sentiment finishes in ~1.3 s while Data runs concurrently, then Manager fires once both are in. Net wall-clock ≈ max(data, sentiment) + manager, not sum.
   * SSR HTML on `http://localhost:3000/` contains all the new UI markers (page title, `Analyze` button, ticker input, aria-label).
 
+* **SSE streaming endpoint + live progress UI shipped.**
+  * `backend/app/agents/pipeline_stream.py` — streaming variant of the full pipeline: runs Data + Sentiment agents concurrently via two `daemon` threads, collects results via `queue.Queue`, yields SSE-ready event dicts as each agent completes, then runs Manager and yields the `FinalReport`.  Event types: `progress` (stage updates), `result` (full report), `stream_error` (agent failure — never raises, always yields the error event so the SSE layer can close cleanly).
+  * `backend/app/routers/analyze.py` extended with `GET /api/analyze/{ticker}/stream` — returns a `StreamingResponse(media_type="text/event-stream")` with `Cache-Control: no-cache` and `X-Accel-Buffering: no` headers.  Ticker validation reuses the same regex guard as the sync endpoint.  The original `GET /api/analyze/{ticker}` sync endpoint is unchanged.
+  * `frontend/src/lib/api.ts` extended with `ProgressStage`, `ProgressPayload`, `StreamEvent` types and `streamAnalysis(ticker, onEvent) → cleanup`.  Uses the browser's native `EventSource` API; listens for `progress`, `result`, and `stream_error` named events; handles native `onerror` (connection drop) as a `connection_error` event.
+  * `frontend/src/app/page.tsx` rebuilt around a `useAnalysisStream` custom hook (replaces `useQuery`).  During streaming: renders a `ProgressCard` showing completed stages with ✓ checkmarks and a pulsing `○ Working…` spinner for the next step.  On result: transitions instantly to the four-section report (`SynthesisCard`, `QuoteStatsCard`, `SentimentCard`, `ProvenanceFooter`).  On error: shows `ErrorCard`.  The `Skeleton`-based loading state has been removed.
+  * `npm run build` clean (Turbopack 5.4s compile, TypeScript 2.4s, 4 static routes).
+  * Backend imports verified: `pipeline_stream` imported cleanly; router exposes both `/api/analyze/{ticker}` and `/api/analyze/{ticker}/stream`.
+
 ## 🟡 In Progress
-* (none — original 3-task bootstrap + 3-task vertical-slice milestone both complete; awaiting next set.)
+* (none)
 
 ## 🔴 To Do (Next Tasks)
-* (empty — next milestone TBD; natural candidates are LangGraph + the first real Agent, or an SSE streaming endpoint.)
+* (empty — next tasks TBD)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* SSE streaming endpoint — `/api/analyze/{ticker}/stream` that emits agent-progress events (data fetched / sentiment classified / synthesis ready) so the UI can show stage-by-stage progress instead of a single skeleton. Current sync endpoint takes ~3 s on a warm path, but cold paths or quota-rate-limited retries can be slow enough that progress reporting becomes important.
 * LangSmith tracing setup — useful now that LLM calls exist; mostly env-var configuration plus `LANGSMITH_API_KEY`.
 * Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream costs from runaway calls.
-* Headless-browser E2E (Playwright) — before the UI grows past a single page.
-* Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.
-* SSE streaming endpoint — added once agents exist and have streamable progress to emit.
-* LangSmith tracing setup — only useful once there are LLM/agent traces to capture.
-* Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream from *our* users.
 * Headless-browser E2E (Playwright) — set up before the UI gets more complex than a single page; lets us actually click-test agent flows.
 * Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.
 

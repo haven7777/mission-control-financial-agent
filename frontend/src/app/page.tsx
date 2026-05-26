@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,27 +11,92 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ApiFetchError,
-  fetchAnalysis,
+  streamAnalysis,
   type ClassifiedArticle,
   type DataAgentReport,
   type FinalReport,
   type OverallView,
+  type ProgressPayload,
   type Sentiment,
   type SentimentAgentReport,
 } from "@/lib/api";
+
+// ---------------------------------------------------------------------------
+// Streaming hook
+// ---------------------------------------------------------------------------
+
+type StreamStatus = "idle" | "streaming" | "done" | "error";
+
+interface StreamState {
+  status: StreamStatus;
+  stages: ProgressPayload[];
+  report: FinalReport | null;
+  error: string | null;
+}
+
+function useAnalysisStream(ticker: string | null): StreamState {
+  const [state, setState] = useState<StreamState>({
+    status: "idle",
+    stages: [],
+    report: null,
+    error: null,
+  });
+
+  // Keep a ref so the cleanup returned by streamAnalysis stays stable.
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    // Close any prior stream before starting a new one.
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+
+    if (!ticker) {
+      setState({ status: "idle", stages: [], report: null, error: null });
+      return;
+    }
+
+    setState({ status: "streaming", stages: [], report: null, error: null });
+
+    const cleanup = streamAnalysis(ticker, (event) => {
+      if (event.type === "progress") {
+        setState((prev) => ({
+          ...prev,
+          stages: [...prev.stages, event.data],
+        }));
+      } else if (event.type === "result") {
+        setState((prev) => ({ ...prev, status: "done", report: event.data }));
+      } else {
+        // stream_error or connection_error
+        setState((prev) => ({
+          ...prev,
+          status: "error",
+          error: event.data.message,
+        }));
+      }
+    });
+
+    cleanupRef.current = cleanup;
+    return () => {
+      cleanup();
+      cleanupRef.current = null;
+    };
+  }, [ticker]);
+
+  return state;
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function Home() {
   const [input, setInput] = useState("");
   const [ticker, setTicker] = useState<string | null>(null);
 
-  const query = useQuery<FinalReport, ApiFetchError>({
-    queryKey: ["analyze", ticker],
-    queryFn: () => fetchAnalysis(ticker!),
-    enabled: ticker !== null,
-  });
+  const { status, stages, report, error } = useAnalysisStream(ticker);
+
+  const isStreaming = status === "streaming";
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -61,22 +125,24 @@ export default function Home() {
           autoCapitalize="characters"
           className="font-mono uppercase"
         />
-        <Button type="submit" disabled={!input.trim() || query.isFetching}>
-          {query.isFetching ? "Analyzing…" : "Analyze"}
+        <Button type="submit" disabled={!input.trim() || isStreaming}>
+          {isStreaming ? "Analyzing…" : "Analyze"}
         </Button>
       </form>
 
       <section aria-live="polite" className="flex flex-col gap-4">
-        {query.isFetching && <AnalysisSkeleton />}
-        {!query.isFetching && query.isError && (
-          <ErrorCard message={query.error?.message ?? "Unknown error."} />
+        {isStreaming && <ProgressCard stages={stages} />}
+
+        {!isStreaming && status === "error" && (
+          <ErrorCard message={error ?? "Unknown error."} />
         )}
-        {!query.isFetching && query.isSuccess && (
+
+        {!isStreaming && status === "done" && report && (
           <>
-            <SynthesisCard report={query.data} />
-            <QuoteStatsCard data={query.data.data_snapshot} />
-            <SentimentCard sentiment={query.data.sentiment_snapshot} />
-            <ProvenanceFooter report={query.data} />
+            <SynthesisCard report={report} />
+            <QuoteStatsCard data={report.data_snapshot} />
+            <SentimentCard sentiment={report.sentiment_snapshot} />
+            <ProvenanceFooter report={report} />
           </>
         )}
       </section>
@@ -84,7 +150,57 @@ export default function Home() {
   );
 }
 
-// ----- Synthesis (top-of-page headline) -------------------------------------
+// ---------------------------------------------------------------------------
+// Progress card (replaces skeleton during streaming)
+// ---------------------------------------------------------------------------
+
+const STAGE_LABELS: Record<string, string> = {
+  started: "Initializing…",
+  data_complete: "Price & fundamentals",
+  sentiment_complete: "News sentiment",
+  synthesizing: "Synthesizing report…",
+};
+
+function ProgressCard({ stages }: { stages: ProgressPayload[] }) {
+  const completedSet = new Set(stages.map((s) => s.stage));
+
+  // Determine the current "in-progress" stage label for the spinner.
+  const lastStage = stages.at(-1);
+  const spinnerLabel = lastStage
+    ? (STAGE_LABELS[lastStage.stage] ?? lastStage.message)
+    : "Starting…";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Analyzing…</CardTitle>
+        <CardDescription>Running agents in parallel</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2 text-sm">
+          {stages.map((s, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="shrink-0 font-mono text-emerald-400">✓</span>
+              <span className="text-muted-foreground">{s.message}</span>
+            </li>
+          ))}
+
+          {/* Spinner row for the "next" step */}
+          {!completedSet.has("synthesizing") && (
+            <li className="flex items-center gap-2 animate-pulse">
+              <span className="shrink-0 font-mono text-zinc-500">○</span>
+              <span className="text-muted-foreground">{spinnerLabel}</span>
+            </li>
+          )}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Synthesis (top-of-page headline)
+// ---------------------------------------------------------------------------
 
 const VIEW_TONE: Record<OverallView, { badge: string; ring: string }> = {
   positive: { badge: "bg-emerald-500/15 text-emerald-400", ring: "ring-emerald-500/30" },
@@ -154,7 +270,9 @@ function BulletList({
   );
 }
 
-// ----- Quote / fundamentals stats -------------------------------------------
+// ---------------------------------------------------------------------------
+// Quote / fundamentals stats
+// ---------------------------------------------------------------------------
 
 function QuoteStatsCard({ data }: { data: DataAgentReport }) {
   const q = data.quote;
@@ -234,7 +352,9 @@ function Field({
   );
 }
 
-// ----- Sentiment articles ---------------------------------------------------
+// ---------------------------------------------------------------------------
+// Sentiment articles
+// ---------------------------------------------------------------------------
 
 const SENT_TONE: Record<Sentiment, { badge: string }> = {
   bullish: { badge: "bg-emerald-500/15 text-emerald-400" },
@@ -304,7 +424,9 @@ function ClassifiedRow({
   );
 }
 
-// ----- Footer / loading / error ---------------------------------------------
+// ---------------------------------------------------------------------------
+// Footer / error
+// ---------------------------------------------------------------------------
 
 function ProvenanceFooter({ report }: { report: FinalReport }) {
   return (
@@ -313,42 +435,6 @@ function ProvenanceFooter({ report }: { report: FinalReport }) {
       <span className="font-mono">{report.model_used}</span> ·{" "}
       {new Date(report.generated_at).toLocaleString()}
     </p>
-  );
-}
-
-function AnalysisSkeleton() {
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-64" />
-          <Skeleton className="mt-2 h-4 w-96" />
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          {Array.from({ length: 2 }).map((_, c) => (
-            <div key={c}>
-              <Skeleton className="mb-2 h-3 w-20" />
-              {Array.from({ length: 3 }).map((_, r) => (
-                <Skeleton key={r} className="mb-1 h-4 w-full" />
-              ))}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-5 w-48" />
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i}>
-              <Skeleton className="h-3 w-14" />
-              <Skeleton className="mt-1 h-4 w-20" />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </>
   );
 }
 

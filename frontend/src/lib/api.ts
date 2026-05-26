@@ -1,6 +1,9 @@
 // Wire-format types mirror the Pydantic models in backend/app/models/*.
 // Decimals are serialized as strings by FastAPI/Pydantic v2; volumes and
 // market_capitalization stay as numbers.
+//
+// Streaming: streamAnalysis() opens an EventSource and calls onEvent for
+// each server-sent event.  Returns a cleanup function to close the stream.
 
 export type StockQuote = {
   symbol: string;
@@ -128,4 +131,67 @@ export function fetchAnalysis(ticker: string): Promise<FinalReport> {
   const trimmed = ticker.trim();
   if (!trimmed) throw new ApiFetchError(400, "Empty ticker.");
   return _getJson<FinalReport>(`/api/analyze/${encodeURIComponent(trimmed)}`);
+}
+
+// ---------------------------------------------------------------------------
+// SSE streaming
+// ---------------------------------------------------------------------------
+
+export type ProgressStage =
+  | "started"
+  | "data_complete"
+  | "sentiment_complete"
+  | "synthesizing";
+
+export type ProgressPayload = { stage: ProgressStage; message: string };
+
+export type StreamEvent =
+  | { type: "progress"; data: ProgressPayload }
+  | { type: "result"; data: FinalReport }
+  | { type: "stream_error"; data: { message: string } }
+  | { type: "connection_error"; data: { message: string } };
+
+/**
+ * Open an SSE stream for the given ticker.
+ *
+ * Calls `onEvent` for every server-sent event.  Returns a cleanup function
+ * that closes the EventSource — call it on unmount or when the ticker changes.
+ */
+export function streamAnalysis(
+  ticker: string,
+  onEvent: (event: StreamEvent) => void,
+): () => void {
+  const trimmed = ticker.trim();
+  if (!trimmed) {
+    onEvent({ type: "stream_error", data: { message: "Empty ticker." } });
+    return () => {};
+  }
+
+  const url = `${API_BASE_URL}/api/analyze/${encodeURIComponent(trimmed)}/stream`;
+  const source = new EventSource(url);
+
+  source.addEventListener("progress", (e: Event) => {
+    const data = JSON.parse((e as MessageEvent).data) as ProgressPayload;
+    onEvent({ type: "progress", data });
+  });
+
+  source.addEventListener("result", (e: Event) => {
+    const data = JSON.parse((e as MessageEvent).data) as FinalReport;
+    onEvent({ type: "result", data });
+    source.close();
+  });
+
+  source.addEventListener("stream_error", (e: Event) => {
+    const data = JSON.parse((e as MessageEvent).data) as { message: string };
+    onEvent({ type: "stream_error", data });
+    source.close();
+  });
+
+  // Native onerror fires when the TCP connection drops (not a named SSE event).
+  source.onerror = () => {
+    onEvent({ type: "connection_error", data: { message: "Lost connection to server." } });
+    source.close();
+  };
+
+  return () => source.close();
 }
