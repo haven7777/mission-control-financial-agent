@@ -141,7 +141,10 @@ export type ProgressStage =
   | "started"
   | "data_complete"
   | "sentiment_complete"
-  | "synthesizing";
+  | "synthesizing"
+  | "critiquing"
+  | "revising"
+  | "approved";
 
 export type ProgressPayload = { stage: ProgressStage; message: string };
 

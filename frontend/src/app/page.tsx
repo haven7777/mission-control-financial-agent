@@ -18,6 +18,7 @@ import {
   type FinalReport,
   type OverallView,
   type ProgressPayload,
+  type ProgressStage,
   type Sentiment,
   type SentimentAgentReport,
 } from "@/lib/api";
@@ -151,28 +152,65 @@ export default function Home() {
 }
 
 // ---------------------------------------------------------------------------
-// Progress card (replaces skeleton during streaming)
+// Progress card — Mission Control view
 // ---------------------------------------------------------------------------
 
+type StageStyle = { icon: string; color: string; bg?: string };
+
+const STAGE_META: Record<ProgressStage, StageStyle> = {
+  started:            { icon: "▸",  color: "text-zinc-400" },
+  data_complete:      { icon: "✓",  color: "text-emerald-400" },
+  sentiment_complete: { icon: "✓",  color: "text-emerald-400" },
+  synthesizing:       { icon: "⟳",  color: "text-blue-400" },
+  critiquing:         { icon: "⊙",  color: "text-amber-400" },
+  revising:           { icon: "↺",  color: "text-orange-400", bg: "bg-orange-500/10 border border-orange-500/20 rounded-md px-3 py-2" },
+  approved:           { icon: "✓",  color: "text-emerald-400", bg: "bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-2" },
+};
+
 function ProgressCard({ stages }: { stages: ProgressPayload[] }) {
-  const completedSet = new Set(stages.map((s) => s.stage));
+  const lastStage = stages.at(-1)?.stage;
+  const isDone = lastStage === "approved";
+
+  // Derive a human-readable phase label for the card description
+  const phaseLabel = (() => {
+    if (!lastStage || lastStage === "started") return "Starting up…";
+    if (lastStage === "data_complete" || lastStage === "sentiment_complete") return "Gathering data…";
+    if (lastStage === "synthesizing") return "Manager synthesizing…";
+    if (lastStage === "critiquing") return "Critic auditing…";
+    if (lastStage === "revising") return "Revision requested — rewriting…";
+    if (lastStage === "approved") return "Synthesis approved";
+    return "Running…";
+  })();
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Analyzing…</CardTitle>
-        <CardDescription>Running agents in parallel</CardDescription>
+        <CardTitle className="text-base">AI Research Operating System</CardTitle>
+        <CardDescription>{phaseLabel}</CardDescription>
       </CardHeader>
       <CardContent>
         <ul className="space-y-2 text-sm">
-          {stages.map((s, i) => (
-            <li key={i} className="flex items-center gap-2">
-              <span className="shrink-0 font-mono text-emerald-400">✓</span>
-              <span className="text-muted-foreground">{s.message}</span>
-            </li>
-          ))}
+          {stages.map((s, i) => {
+            const meta = STAGE_META[s.stage] ?? { icon: "·", color: "text-zinc-400" };
+            const isExpanded = s.stage === "revising" || s.stage === "approved";
+            return (
+              <li key={i} className={isExpanded ? meta.bg : "flex items-center gap-2"}>
+                {isExpanded ? (
+                  <div className="flex items-start gap-2">
+                    <span className={`shrink-0 font-mono ${meta.color} mt-0.5`}>{meta.icon}</span>
+                    <span className={meta.color}>{s.message}</span>
+                  </div>
+                ) : (
+                  <>
+                    <span className={`shrink-0 font-mono ${meta.color}`}>{meta.icon}</span>
+                    <span className="text-muted-foreground">{s.message}</span>
+                  </>
+                )}
+              </li>
+            );
+          })}
 
-          {!completedSet.has("synthesizing") && (
+          {!isDone && (
             <li className="flex items-center gap-2 animate-pulse">
               <span className="shrink-0 font-mono text-zinc-500">○</span>
               <span className="text-muted-foreground">Working…</span>

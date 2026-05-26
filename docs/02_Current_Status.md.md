@@ -147,6 +147,23 @@
   * `backend/app/agents/manager_agent.py` updated: `run_manager_agent` now accepts optional `revision_instruction: str | None`. When set, the revision directive is prepended to the user prompt so the Manager knows exactly what to fix. Log line shows `[REVISION]` flag on subsequent rounds.
   * Verified live (IBM): `data → sentiment → manager (round 1) → critic (verdict=approved, confidence=0.95) → END`. Loop fired correctly; no spurious cycles.
 
+* **SSE Streaming updated for Critic loop (v3.0 Task 3).**
+  * `backend/app/agents/pipeline_stream.py` rewritten with Manager → Critic reflection loop. New progress stages: `synthesizing`, `critiquing`, `revising` (with short Critic instruction), `approved` (with confidence %).
+  * Loops `for revision_round in range(1, MAX_REVISION_CYCLES + 1)` — at most 2 iterations. `is_last` forces exit on final round regardless of verdict. Critic failure is non-fatal (surfaces Manager's last draft).
+  * Verified live via `curl`: full reflection sequence observed — `started → data_complete → sentiment_complete → synthesizing → critiquing → revising → synthesizing (revision 1) → critiquing → approved (confidence 95%) → result`.
+
+* **Frontend "Mission Control" UI shipped (v3.0 Task 4).**
+  * `frontend/src/lib/api.ts` — `ProgressStage` type extended with `critiquing`, `revising`, `approved`.
+  * `frontend/src/app/page.tsx` — `ProgressCard` redesigned as "AI Research Operating System" Mission Control view:
+    * Card title is "AI Research Operating System"; description updates dynamically per phase ("Starting up…", "Gathering data…", "Manager synthesizing…", "Critic auditing…", "Revision requested — rewriting…", "Synthesis approved").
+    * Stage-specific icons and colors: `▸` gray for started, `✓` green for data/sentiment, `⟳` blue for synthesizing, `⊙` amber for critiquing, `↺` orange for revising (full instruction shown in highlighted block), `✓` emerald for approved (confidence shown in highlighted block).
+    * Pulsing `○ Working…` indicator stops when `approved` is received.
+  * `npm run build` clean (Turbopack 5.2s, TypeScript 2.3s).
+  * Verified with Playwright (headless Chromium): "AI Research Operating System" card visible during stream; stage icons color-coded correctly; description updates in real time; full 4-section report renders on completion.
+
 ## 🔴 To Do (Next Tasks)
-1. **Update SSE Streaming:** Modify `pipeline_stream.py` to broadcast the Critic's verdict, confidence, and revision rounds to the frontend as `progress` events.
-2. **Upgrade Frontend UI:** Build the "Mission Control" UI. Display the live agent debate, confidence scores, and dynamic routing steps instead of simple loading indicators.
+* None — v3.0 upgrade complete. All four tasks delivered:
+  1. Critic Agent (models + agent + smoke test)
+  2. Cyclical pipeline with reflection loop
+  3. SSE streaming with Critic debate events
+  4. Mission Control frontend UI

@@ -1,15 +1,18 @@
-"""Streaming variant of the full pipeline.
+"""Streaming pipeline with Critic reflection loop (v3.0).
 
-Runs Data + Sentiment agents concurrently via threads, then runs the Manager
-agent once both complete.  Yields SSE-ready event dicts:
+Yields SSE-ready event dicts in order:
 
-    {"event": "progress",      "data": {"stage": str, "message": str}}
-    {"event": "result",        "data": FinalReport.model_dump(mode="json")}
-    {"event": "stream_error",  "data": {"message": str}}
+    progress  started           — analysis kicked off
+    progress  data_complete     — yfinance quote + overview ready
+    progress  sentiment_complete — news articles classified
+    progress  synthesizing      — Manager drafting (each round)
+    progress  critiquing        — Critic auditing (each round)
+    progress  revising          — Critic requested a revision (with short instruction)
+    progress  approved          — Critic approved (or cycle cap reached)
+    result    <FinalReport>     — complete report payload
 
-On agent failure a single "stream_error" dict is yielded and the generator
-returns — it never raises.  The caller (SSE route) should close the stream
-after receiving either "result" or "stream_error".
+On any agent failure a single stream_error event is yielded and the
+generator returns — it never raises.
 """
 
 from __future__ import annotations
@@ -19,10 +22,12 @@ import queue
 import threading
 from typing import Any, Iterator
 
+from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
 from app.agents.manager_agent import run_manager_agent
 from app.agents.sentiment_agent import run_sentiment_agent
 from app.models.agents import DataAgentReport
+from app.models.critic import CritiqueVerdict
 from app.models.manager import FinalReport
 from app.models.sentiment import SentimentAgentReport
 
@@ -40,6 +45,8 @@ def _stream_error(message: str) -> dict:
 def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     """Yield progress events then the final report as SSE-ready dicts."""
     normalized = ticker.strip().upper()
+
+    # ── Phase 1: Data + Sentiment in parallel ─────────────────────────────────
 
     result_q: queue.Queue[tuple[str, Any]] = queue.Queue()
 
@@ -93,13 +100,65 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     data_thread.join()
     sentiment_thread.join()
 
-    yield _progress("synthesizing", "Synthesizing report…")
+    # ── Phase 2: Manager → Critic reflection loop ─────────────────────────────
+    # Runs at most MAX_REVISION_CYCLES times. On each iteration:
+    #   manager synthesises → critic audits → approved → done
+    #                                       → needs_revision (if rounds remain) → loop
 
-    try:
-        final: FinalReport = run_manager_agent(data_report, sentiment_report)  # type: ignore[arg-type]
-    except Exception as exc:  # noqa: BLE001
-        log.warning("pipeline_stream: manager failed: %s", exc)
-        yield _stream_error(str(exc))
+    revision_instruction: str | None = None
+    final: FinalReport | None = None
+
+    for revision_round in range(1, MAX_REVISION_CYCLES + 1):
+        is_last = revision_round == MAX_REVISION_CYCLES
+
+        # Manager
+        round_suffix = f" (revision {revision_round - 1})" if revision_round > 1 else ""
+        yield _progress("synthesizing", f"Synthesizing report{round_suffix}…")
+
+        try:
+            final = run_manager_agent(
+                data_report,  # type: ignore[arg-type]
+                sentiment_report,  # type: ignore[arg-type]
+                revision_instruction,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pipeline_stream: manager failed (round %d): %s", revision_round, exc)
+            yield _stream_error(str(exc))
+            return
+
+        # Critic
+        yield _progress("critiquing", f"Critic auditing synthesis{round_suffix}…")
+
+        try:
+            critique = run_critic_agent(
+                final, data_report, sentiment_report, revision_round  # type: ignore[arg-type]
+            )
+            cr = critique.critique_result
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pipeline_stream: critic failed (round %d): %s", revision_round, exc)
+            # Critic failure is non-fatal: surface the Manager's last draft.
+            break
+
+        if cr.verdict == CritiqueVerdict.APPROVED or is_last:
+            label = (
+                f"Max revisions reached — confidence {cr.synthesis_confidence:.0%}"
+                if is_last and cr.verdict == CritiqueVerdict.NEEDS_REVISION
+                else f"Synthesis approved — confidence {cr.synthesis_confidence:.0%}, "
+                     f"{len(cr.issues)} issue(s) noted"
+            )
+            yield _progress("approved", label)
+            break
+
+        # needs_revision with rounds remaining
+        short_instr = (cr.revision_instruction or "")[:120]
+        yield _progress(
+            "revising",
+            f"Revision {revision_round}/{MAX_REVISION_CYCLES - 1}: {short_instr}…",
+        )
+        revision_instruction = cr.revision_instruction
+
+    if final is None:
+        yield _stream_error("Pipeline produced no report")
         return
 
     yield {"event": "result", "data": final.model_dump(mode="json")}
