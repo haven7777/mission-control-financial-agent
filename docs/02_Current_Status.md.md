@@ -137,33 +137,35 @@
   * `backend/app/agents/critic_agent.py` — single-node LangGraph (`critique`) using `ChatGroq.with_structured_output(CritiqueResult, method="json_mode")`. System prompt checks four things: numeric grounding, sentiment alignment, completeness, internal consistency. Reuses `_format_data` / `_format_sentiment` helpers from `manager_agent.py`. Exports `MAX_REVISION_CYCLES = 2` for the pipeline (Task 2). Public surface: `run_critic_agent(report, data, sentiment, revision_round=1) -> CritiqueReport`.
   * `backend/scripts/test_critic_agent.py` — full pipeline smoke test (Data → Sentiment → Manager → Critic). Live verified on IBM: `NEEDS_REVISION`, confidence 0.70, 4 issues found (1 MAJOR: sentiment divergence not acknowledged; 3 MINOR). Revision instruction generated correctly.
 
-## 🟡 In Progress
-* Upgrading architecture to v3.0 (AI Research Operating System with Critic Agent and Reflection Loops).
+* **Mission Control Frontend UI shipped (v3.0 Task 4).**
+  * Moved all v0 premium components from `src/components/ui/dashboard/` → `src/components/dashboard/`.
+  * Installed missing shadcn/ui primitives: `badge`, `scroll-area`, `sheet`, `progress`.
+  * `agent-terminal.tsx` — removed mock `setInterval` timers / hardcoded events; now accepts `events: AgentEvent[]` prop; exports `AgentEvent` interface and `AgentEventStatus` type; renders placeholder row when empty.
+  * `synthesis-console.tsx` — removed `getSynthesisData()` mock; now accepts `{ report: FinalReport, confidence: number }`; maps `OverallView` to `BULLISH`/`BEARISH`/`MIXED`; animated confidence gauge driven by real prop.
+  * `evidence-panel.tsx` — removed `getMarketData()`/`getNewsData()` mocks; now accepts `{ data: DataAgentReport, sentiment: SentimentAgentReport, showOnly? }`; helpers `formatMarketCap`, `formatVolume`, `extractDomain` format live data.
+  * `results-dashboard.tsx` — updated props to `{ ticker, report, terminalEvents, confidence, onBack }`; "Under the Hood" Sheet shows live `AgentTerminal` with full SSE event log; `SheetTrigger` rendered without `asChild` (base-ui/react variant, not radix-ui).
+  * `page.tsx` fully rebuilt: three-view architecture (idle landing → streaming AgentTerminal → ResultsDashboard); `stagesToEvents()` and `parseConfidence()` helpers wire SSE stages to component props; all old `ProgressCard`/`SynthesisCard`/`SentimentCard` components removed.
+  * Dead `src/components/ui/page.tsx` (broken v0 boilerplate) deleted.
+  * `npm run build` clean; end-to-end E2E verified: landing → streaming terminal → results dashboard with real IBM data; "Under the Hood" sheet showing full agent debate log including Critic revision cycle.
+  * Commit: `d4224d3` (15 files changed, 1870 insertions, 375 deletions).
 
-* **Cyclical pipeline with Critic reflection loop landed (v3.0 Task 2).**
-  * `backend/app/agents/pipeline.py` refactored from a linear DAG to a cyclical graph. New shape: `START → data + sentiment (parallel) → manager → critic → (needs_revision ≤ MAX_REVISION_CYCLES) → manager | END`.
-  * `_PipelineState` extended with `critique: CritiqueReport | None` and `revision_round: int = 1`. Critic node increments `revision_round` on each cycle so the routing condition can enforce the cap.
-  * `_should_revise` conditional edge: routes back to `manager` when `verdict == needs_revision AND revision_round ≤ MAX_REVISION_CYCLES`; routes to `END` otherwise (approved or cap exhausted).
-  * `backend/app/agents/manager_agent.py` updated: `run_manager_agent` now accepts optional `revision_instruction: str | None`. When set, the revision directive is prepended to the user prompt so the Manager knows exactly what to fix. Log line shows `[REVISION]` flag on subsequent rounds.
-  * Verified live (IBM): `data → sentiment → manager (round 1) → critic (verdict=approved, confidence=0.95) → END`. Loop fired correctly; no spurious cycles.
+* **3-State page machine shipped (entry flow).**
+  * `frontend/src/app/page.tsx` refactored to a clean 3-state machine: `search → loading → results`.
+  * `SearchHome` wired as the idle/error state: full-screen branding, large search bar, Popular Stocks chips, Explore Sectors cards. Category clicks take the first ticker from the comma-separated list.
+  * `LoadingSkeleton` wired as the streaming state: animated progress ring + 4 agent cards. Real SSE stream runs in background; `DashboardHeader` + "Under the Hood" Sheet expose live `AgentTerminal` events during loading.
+  * Error state falls through to `SearchHome` with a fixed dismissible banner.
+  * `npm run build` clean (5.6s Turbopack, 3.3s TypeScript).
 
-* **SSE Streaming updated for Critic loop (v3.0 Task 3).**
-  * `backend/app/agents/pipeline_stream.py` rewritten with Manager → Critic reflection loop. New progress stages: `synthesizing`, `critiquing`, `revising` (with short Critic instruction), `approved` (with confidence %).
-  * Loops `for revision_round in range(1, MAX_REVISION_CYCLES + 1)` — at most 2 iterations. `is_last` forces exit on final round regardless of verdict. Critic failure is non-fatal (surfaces Manager's last draft).
-  * Verified live via `curl`: full reflection sequence observed — `started → data_complete → sentiment_complete → synthesizing → critiquing → revising → synthesizing (revision 1) → critiquing → approved (confidence 95%) → result`.
+## 🟢 All Tasks Complete
 
-* **Frontend "Mission Control" UI shipped (v3.0 Task 4).**
-  * `frontend/src/lib/api.ts` — `ProgressStage` type extended with `critiquing`, `revising`, `approved`.
-  * `frontend/src/app/page.tsx` — `ProgressCard` redesigned as "AI Research Operating System" Mission Control view:
-    * Card title is "AI Research Operating System"; description updates dynamically per phase ("Starting up…", "Gathering data…", "Manager synthesizing…", "Critic auditing…", "Revision requested — rewriting…", "Synthesis approved").
-    * Stage-specific icons and colors: `▸` gray for started, `✓` green for data/sentiment, `⟳` blue for synthesizing, `⊙` amber for critiquing, `↺` orange for revising (full instruction shown in highlighted block), `✓` emerald for approved (confidence shown in highlighted block).
-    * Pulsing `○ Working…` indicator stops when `approved` is received.
-  * `npm run build` clean (Turbopack 5.2s, TypeScript 2.3s).
-  * Verified with Playwright (headless Chromium): "AI Research Operating System" card visible during stream; stage icons color-coded correctly; description updates in real time; full 4-section report renders on completion.
+| Task | Description | Status |
+|---|---|---|
+| Task 1 | Critic Agent (models + agent) | ✅ Done |
+| Task 2 | Cyclical pipeline with reflection loop (MAX_REVISION_CYCLES=2) | ✅ Done |
+| Task 3 | SSE streaming with Critic debate events | ✅ Done |
+| Task 4 | Mission Control frontend UI (v0 components wired to real SSE data) | ✅ Done |
 
 ## 🔴 To Do (Next Tasks)
-* None — v3.0 upgrade complete. All four tasks delivered:
-  1. Critic Agent (models + agent + smoke test)
-  2. Cyclical pipeline with reflection loop
-  3. SSE streaming with Critic debate events
-  4. Mission Control frontend UI
+* No pending tasks. System is feature-complete for v3.0.
+* **Follow-up (security):** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
+* **Optional future work:** Playwright E2E tests for the new Mission Control UI (existing tests cover the old 4-card layout); production deployment config (Docker, env vars, CORS origins).

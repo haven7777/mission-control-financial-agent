@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { AgentTerminal, type AgentEvent, type AgentEventStatus } from "@/components/dashboard/agent-terminal";
 import { ResultsDashboard } from "@/components/dashboard/results-dashboard";
+import { SearchHome } from "@/components/search/search-home";
+import { LoadingSkeleton } from "@/components/search/loading-skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Terminal } from "lucide-react";
 import {
   streamAnalysis,
   type FinalReport,
@@ -16,7 +24,7 @@ import {
 } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
-// Streaming hook (unchanged)
+// Streaming hook
 // ---------------------------------------------------------------------------
 
 type StreamStatus = "idle" | "streaming" | "done" | "error";
@@ -113,18 +121,19 @@ function parseConfidence(stages: ProgressPayload[]): number {
 // ---------------------------------------------------------------------------
 
 export default function Home() {
-  const [input, setInput] = useState("");
   const [ticker, setTicker] = useState<string | null>(null);
+  const [terminalOpen, setTerminalOpen] = useState(false);
 
   const { status, stages, report, error } = useAnalysisStream(ticker);
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const next = input.trim().toUpperCase();
-    if (next) setTicker(next);
+  function handleSearch(query: string) {
+    // Category clicks pass comma-separated tickers — take only the first
+    const first = query.split(",")[0].trim().toUpperCase();
+    if (!first) return;
+    setTicker(first);
   }
 
-  // ── Done: full Mission Control results dashboard ──────────────────────────
+  // ── Results ───────────────────────────────────────────────────────────────
   if (status === "done" && report && ticker) {
     return (
       <ResultsDashboard
@@ -132,76 +141,53 @@ export default function Home() {
         report={report}
         terminalEvents={stagesToEvents(stages)}
         confidence={parseConfidence(stages)}
-        onBack={() => { setTicker(null); setInput(""); }}
+        onBack={() => setTicker(null)}
       />
     );
   }
 
-  // ── Streaming: full-screen terminal view ──────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (status === "streaming" && ticker) {
     return (
       <div className="h-screen flex flex-col bg-background">
-        <DashboardHeader query={ticker} />
-        <div className="flex-1 p-6 overflow-hidden">
-          <AgentTerminal events={stagesToEvents(stages)} />
+        <DashboardHeader query={ticker}>
+          <Sheet open={terminalOpen} onOpenChange={setTerminalOpen}>
+            <SheetTrigger className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm font-medium border border-border/50">
+              <Terminal className="w-4 h-4 text-primary" />
+              <span>Under the Hood</span>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[480px] sm:w-[540px] p-0 bg-[#0a0f14] border-l border-border/50">
+              <SheetHeader className="px-6 py-4 border-b border-border/30">
+                <SheetTitle className="flex items-center gap-3 text-foreground">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Agent Terminal
+                  <span className="text-xs font-mono text-muted-foreground ml-auto">agent_terminal.log</span>
+                </SheetTitle>
+              </SheetHeader>
+              <ScrollArea className="h-[calc(100vh-80px)]">
+                <div className="p-4">
+                  <AgentTerminal events={stagesToEvents(stages)} />
+                </div>
+              </ScrollArea>
+            </SheetContent>
+          </Sheet>
+        </DashboardHeader>
+        <div className="flex-1 overflow-auto">
+          <LoadingSkeleton query={ticker} />
         </div>
       </div>
     );
   }
 
-  // ── Error ─────────────────────────────────────────────────────────────────
-  if (status === "error") {
-    return (
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
-        <LandingHeader />
-        <form onSubmit={onSubmit} className="flex gap-2">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="e.g. IBM"
-            aria-label="Stock ticker"
-            autoCapitalize="characters"
-            className="font-mono uppercase"
-          />
-          <Button type="submit" disabled={!input.trim()}>Analyze</Button>
-        </form>
-        <Card className="border-destructive/40">
-          <CardHeader>
-            <CardTitle className="text-destructive">Could not analyze</CardTitle>
-            <CardDescription>{error ?? "Unknown error."}</CardDescription>
-          </CardHeader>
-        </Card>
-      </main>
-    );
-  }
-
-  // ── Idle: landing form ────────────────────────────────────────────────────
+  // ── Search (idle + error) ─────────────────────────────────────────────────
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
-      <LandingHeader />
-      <form onSubmit={onSubmit} className="flex gap-2">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="e.g. IBM"
-          aria-label="Stock ticker"
-          autoCapitalize="characters"
-          className="font-mono uppercase"
-        />
-        <Button type="submit" disabled={!input.trim()}>Analyze</Button>
-      </form>
-    </main>
-  );
-}
-
-function LandingHeader() {
-  return (
-    <header className="space-y-2">
-      <h1 className="text-3xl font-semibold tracking-tight">Mission Control</h1>
-      <p className="text-sm text-muted-foreground">
-        Enter a stock ticker. A team of AI agents fetches data, analyzes sentiment,
-        synthesizes a report, and critiques it — streaming every step live.
-      </p>
-    </header>
+    <>
+      {status === "error" && error && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm max-w-md text-center">
+          {error}
+        </div>
+      )}
+      <SearchHome onSearch={handleSearch} />
+    </>
   );
 }
