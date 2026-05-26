@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, ExternalLink } from "lucide-react"
 import type { DataAgentReport, SentimentAgentReport } from "@/lib/api"
 
 // ---------- formatting helpers ----------
@@ -59,6 +59,7 @@ export function EvidencePanel({ data, sentiment, showOnly }: EvidencePanelProps)
 
   const newsItems = sentiment.classified.map((ca) => ({
     title:     ca.article.title,
+    url:       ca.article.url,
     source:    extractDomain(ca.article.url),
     sentiment: ca.sentiment === "bullish" ? "Bullish" : ca.sentiment === "bearish" ? "Bearish" : "Neutral",
     reasoning: ca.reason,
@@ -171,14 +172,19 @@ function NewsCard({
   getSentimentColor,
   getSentimentIcon,
 }: {
-  item: { title: string; source: string; sentiment: string; reasoning: string; time: string }
+  item: { title: string; url: string; source: string; sentiment: string; reasoning: string; time: string }
   getSentimentColor: (s: string) => string
   getSentimentIcon: (s: string) => React.ReactNode
 }) {
   return (
-    <div className="p-4 rounded-lg bg-muted/10 border border-border/30 hover:bg-muted/20 transition-colors">
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block p-4 rounded-lg bg-muted/10 border border-border/30 hover:bg-muted/20 hover:border-primary/30 transition-all cursor-pointer"
+    >
       <div className="flex items-start justify-between gap-3 mb-2">
-        <h4 className="text-sm font-medium leading-tight flex-1">{item.title}</h4>
+        <h4 className="text-sm font-medium leading-tight flex-1 group-hover:text-primary transition-colors">{item.title}</h4>
         <Badge variant="outline" className={cn("text-[10px] shrink-0 flex items-center gap-1", getSentimentColor(item.sentiment))}>
           {getSentimentIcon(item.sentiment)}
           {item.sentiment}
@@ -186,9 +192,12 @@ function NewsCard({
       </div>
       <p className="text-xs text-muted-foreground italic mb-3 leading-relaxed">&ldquo;{item.reasoning}&rdquo;</p>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{item.source}</span>
+        <div className="flex items-center gap-1">
+          <span>{item.source}</span>
+          <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
         <span>{item.time}</span>
       </div>
-    </div>
+    </a>
   )
 }

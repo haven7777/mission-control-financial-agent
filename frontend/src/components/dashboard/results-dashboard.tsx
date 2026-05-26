@@ -30,7 +30,7 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Header with Under the Hood button */}
-      <DashboardHeader query={ticker} onBack={onBack}>
+      <DashboardHeader query={ticker} onBack={onBack} status="approved">
         <Sheet open={terminalOpen} onOpenChange={setTerminalOpen}>
           <SheetTrigger className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm font-medium border border-border/50">
             <Terminal className="w-4 h-4 text-primary" />
@@ -41,7 +41,6 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
               <SheetTitle className="flex items-center gap-3 text-foreground">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Agent Terminal
-                <span className="text-xs font-mono text-muted-foreground ml-auto">agent_terminal.log</span>
               </SheetTitle>
             </SheetHeader>
             <ScrollArea className="h-[calc(100vh-80px)]">

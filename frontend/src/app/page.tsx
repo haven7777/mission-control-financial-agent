@@ -102,13 +102,18 @@ const STAGE_STATUS: Record<ProgressStage, AgentEventStatus> = {
 };
 
 function stagesToEvents(stages: ProgressPayload[]): AgentEvent[] {
-  return stages.map((s, i) => ({
-    id:        `stage-${i}`,
-    agent:     STAGE_AGENT[s.stage],
-    message:   s.message,
-    status:    STAGE_STATUS[s.stage],
-    timestamp: new Date(),
-  }));
+  return stages.map((s, i) => {
+    const isLast = i === stages.length - 1;
+    const status = STAGE_STATUS[s.stage];
+    return {
+      id:        `stage-${i}`,
+      agent:     STAGE_AGENT[s.stage],
+      message:   s.message,
+      // A "running" event that isn't the last has since completed — show it as done.
+      status:    status === "running" && !isLast ? "done" : status,
+      timestamp: new Date(),
+    };
+  });
 }
 
 function parseConfidence(stages: ProgressPayload[]): number {
@@ -150,7 +155,7 @@ export default function Home() {
   if (status === "streaming" && ticker) {
     return (
       <div className="h-screen flex flex-col bg-background">
-        <DashboardHeader query={ticker}>
+        <DashboardHeader query={ticker} onBack={() => setTicker(null)} status="processing">
           <Sheet open={terminalOpen} onOpenChange={setTerminalOpen}>
             <SheetTrigger className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm font-medium border border-border/50">
               <Terminal className="w-4 h-4 text-primary" />
@@ -161,7 +166,6 @@ export default function Home() {
                 <SheetTitle className="flex items-center gap-3 text-foreground">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   Agent Terminal
-                  <span className="text-xs font-mono text-muted-foreground ml-auto">agent_terminal.log</span>
                 </SheetTitle>
               </SheetHeader>
               <ScrollArea className="h-[calc(100vh-80px)]">
@@ -173,7 +177,7 @@ export default function Home() {
           </Sheet>
         </DashboardHeader>
         <div className="flex-1 overflow-auto">
-          <LoadingSkeleton query={ticker} />
+          <LoadingSkeleton query={ticker} complete={stages.some((s) => s.stage === "approved")} />
         </div>
       </div>
     );

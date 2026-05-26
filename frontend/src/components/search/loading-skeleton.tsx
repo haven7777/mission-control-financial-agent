@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { Database, BarChart3, Users, AlertTriangle, CheckCircle2 } from "lucide-react"
 
 interface LoadingSkeletonProps {
   query: string
+  complete?: boolean
 }
 
 const agents = [
@@ -64,7 +65,14 @@ const agents = [
   },
 ]
 
-export function LoadingSkeleton({ query }: LoadingSkeletonProps) {
+const ALL_COMPLETE = {
+  data:      { taskIndex: 3, complete: true },
+  sentiment: { taskIndex: 3, complete: true },
+  manager:   { taskIndex: 3, complete: true },
+  critic:    { taskIndex: 3, complete: true },
+}
+
+export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProps) {
   const [agentStates, setAgentStates] = useState<
     Record<string, { taskIndex: number; complete: boolean }>
   >({
@@ -74,13 +82,23 @@ export function LoadingSkeleton({ query }: LoadingSkeletonProps) {
     critic: { taskIndex: 0, complete: false },
   })
 
-  useEffect(() => {
-    const intervals: NodeJS.Timeout[] = []
+  const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
+  const intervalRefs = useRef<ReturnType<typeof setInterval>[]>([])
 
+  // Snap all agents to complete and clear every pending timer when the real
+  // SSE stream reports "approved".
+  useEffect(() => {
+    if (!complete) return
+    timeoutRefs.current.forEach(clearTimeout)
+    intervalRefs.current.forEach(clearInterval)
+    setAgentStates(ALL_COMPLETE)
+  }, [complete])
+
+  useEffect(() => {
     agents.forEach((agent, agentIndex) => {
       const startDelay = agentIndex * 800
 
-      setTimeout(() => {
+      const t = setTimeout(() => {
         let currentTask = 0
         const interval = setInterval(() => {
           currentTask++
@@ -97,11 +115,15 @@ export function LoadingSkeleton({ query }: LoadingSkeletonProps) {
             }))
           }
         }, 600 + Math.random() * 400)
-        intervals.push(interval)
+        intervalRefs.current.push(interval)
       }, startDelay)
+      timeoutRefs.current.push(t)
     })
 
-    return () => intervals.forEach(clearInterval)
+    return () => {
+      timeoutRefs.current.forEach(clearTimeout)
+      intervalRefs.current.forEach(clearInterval)
+    }
   }, [])
 
   const overallProgress =

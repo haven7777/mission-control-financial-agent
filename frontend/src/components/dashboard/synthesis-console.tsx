@@ -4,6 +4,12 @@ import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 import { TrendingUp, TrendingDown, Minus, CheckCircle2, AlertTriangle, Activity } from "lucide-react"
 import type { FinalReport, OverallView } from "@/lib/api"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 type DisplaySentiment = "BULLISH" | "BEARISH" | "MIXED"
 
@@ -85,7 +91,20 @@ export function SynthesisConsole({ report, confidence }: SynthesisConsoleProps) 
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-4xl font-mono font-bold">{animatedConfidence}%</span>
-            <span className="text-sm text-muted-foreground mt-1">Confidence</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger className="text-sm text-muted-foreground mt-1 cursor-help underline decoration-dotted underline-offset-2">
+                  Confidence
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  sideOffset={13}
+                  className="max-w-[280px] text-center text-sm px-4 py-2.5 rounded-xl bg-card border border-primary/30 text-muted-foreground shadow-lg shadow-primary/10 leading-relaxed"
+                >
+                  Indicates the system&apos;s confidence in the accuracy and factual consistency of this report.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 

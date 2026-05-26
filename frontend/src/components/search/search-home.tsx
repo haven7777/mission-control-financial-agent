@@ -129,7 +129,7 @@ export function SearchHome({ onSearch }: SearchHomeProps) {
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-              placeholder="Search stocks, sectors, or ask about market trends..."
+              placeholder="Enter stock ticker (e.g., NVDA)..."
               className="w-full bg-transparent py-5 pl-14 pr-32 text-lg text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
             <button
@@ -182,14 +182,14 @@ export function SearchHome({ onSearch }: SearchHomeProps) {
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 text-center">
           Popular Stocks
         </h2>
-        <div className="flex flex-wrap justify-center gap-3">
+        <div className="flex flex-nowrap justify-center gap-2">
           {popularStocks.map((stock) => (
             <button
               key={stock.symbol}
               onClick={() => handleStockClick(stock.symbol)}
-              className="group flex items-center gap-2 px-4 py-2.5 rounded-xl bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border transition-all"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-secondary/50 hover:bg-secondary border border-transparent hover:border-border transition-all"
             >
-              <span className="font-mono font-semibold text-foreground">
+              <span className="font-mono font-semibold text-foreground text-sm">
                 {stock.symbol}
               </span>
               <span
@@ -200,7 +200,6 @@ export function SearchHome({ onSearch }: SearchHomeProps) {
               >
                 {stock.change}
               </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           ))}
         </div>
@@ -237,10 +236,7 @@ export function SearchHome({ onSearch }: SearchHomeProps) {
         </div>
       </div>
 
-      {/* Footer hint */}
-      <p className="mt-16 text-sm text-muted-foreground/60">
-        Press <kbd className="px-2 py-1 rounded bg-secondary text-xs font-mono">Enter</kbd> to analyze
-      </p>
+
     </div>
   )
 }

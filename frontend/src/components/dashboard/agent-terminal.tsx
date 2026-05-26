@@ -66,7 +66,6 @@ export function AgentTerminal({ events }: AgentTerminalProps) {
           <div className="w-3 h-3 rounded-full bg-warning/80" />
           <div className="w-3 h-3 rounded-full bg-success/80" />
         </div>
-        <span className="ml-2 text-xs font-mono text-muted-foreground">agent_terminal.log</span>
         <div className="ml-auto flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
@@ -86,20 +85,24 @@ export function AgentTerminal({ events }: AgentTerminalProps) {
               <div
                 key={event.id}
                 className={cn(
-                  "flex items-start gap-3 py-1.5 px-2 rounded transition-colors",
+                  "py-1.5 px-2 rounded transition-colors",
                   event.status === "running"  && "bg-primary/5",
                   event.status === "conflict" && "bg-destructive/5"
                 )}
               >
-                <span className="text-muted-foreground text-xs shrink-0 pt-0.5">
-                  {formatTime(event.timestamp)}
-                </span>
-                <span className="shrink-0 pt-0.5">{getStatusIcon(event.status)}</span>
-                <span className={cn("font-semibold shrink-0", getAgentColor(event.agent))}>
-                  {event.agent}:
-                </span>
-                <span className="text-foreground/90 flex-1">{event.message}</span>
-                <span className="shrink-0 text-xs font-semibold">{getStatusText(event.status)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-muted-foreground text-xs shrink-0">
+                    {formatTime(event.timestamp)}
+                  </span>
+                  <span className="shrink-0">{getStatusIcon(event.status)}</span>
+                  <span className={cn("font-semibold shrink-0", getAgentColor(event.agent))}>
+                    {event.agent}:
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold ml-auto">{getStatusText(event.status)}</span>
+                </div>
+                <p className="text-foreground/80 mt-0.5 break-words leading-relaxed">
+                  {event.message}
+                </p>
               </div>
             ))
           )}
