@@ -113,14 +113,22 @@
   * `GET /health` left unrestricted (health-check endpoints should not be rate-limited).
   * `backend/scripts/test_rate_limit.py` — TestClient smoke test (no real API calls): fires 31 requests to `/api/quote/IBM` → asserts #31 is 429; fires 6 requests to `/api/analyze/IBM` → asserts #6 is 429; fires 10 rapid `/health` requests → asserts all 200. All 9 checks pass.
 
+* **LangSmith tracing wired** — fully instrumented; zero code changes needed in the agents themselves (LangGraph traces automatically when env vars are present).
+  * `langsmith==0.8.5` pinned in `requirements.txt` (was already installed as a transitive dep of `langchain-groq`).
+  * `app/config.py` — added `langsmith_endpoint` field (default `https://api.smith.langchain.com`, override for self-hosted) and `langsmith_configured` derived property (true iff both key and `LANGSMITH_TRACING=true` are set).
+  * `app/services/tracing.py` — `configure_langsmith_tracing()`: propagates settings from the `Settings` object into `os.environ` using `setdefault` (idempotent). Sets both the modern `LANGSMITH_*` vars and the legacy `LANGCHAIN_*` compat vars so LangGraph 1.x automatic tracing activates for every agent invocation. Returns `bool`.
+  * `app/main.py` — calls `configure_langsmith_tracing()` at module level (before any request is processed); result stored in `_tracing_enabled`. Startup log now includes `langsmith_tracing=True/False`. `/health` response extended with `langsmith_tracing` field.
+  * `backend/.env.example` — updated with comments and `LANGSMITH_TRACING=false` default (opt-in).
+  * `backend/scripts/test_tracing.py` — 13/13 checks pass: env var propagation, idempotency, disabled-when-no-key, `/health` field presence.
+  * **To activate:** add `LANGSMITH_API_KEY=<key>` and `LANGSMITH_TRACING=true` to `backend/.env`; get a free key at https://smith.langchain.com. Every subsequent agent run will appear in the LangSmith dashboard with full prompt/response/latency traces.
+
 ## 🟡 In Progress
 * (none)
 
 ## 🔴 To Do (Next Tasks)
-* (empty — next tasks TBD)
+* (empty — MVP feature-complete per architecture doc)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* LangSmith tracing setup — useful now that LLM calls exist; mostly env-var configuration plus `LANGSMITH_API_KEY`.
 * Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream costs from runaway calls.
 * Headless-browser E2E (Playwright) — set up before the UI gets more complex than a single page; lets us actually click-test agent flows.
 * Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.

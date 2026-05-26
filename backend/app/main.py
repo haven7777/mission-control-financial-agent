@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.routers import analyze as analyze_router
 from app.routers import quote as quote_router
 from app.services.limiter import limiter
+from app.services.tracing import configure_langsmith_tracing
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,12 +30,17 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 log = logging.getLogger("app")
 
 settings = get_settings()
+_tracing_enabled = configure_langsmith_tracing()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    log.info("Startup: env=%s alpha_vantage_configured=%s",
-             settings.env, settings.alpha_vantage_configured)
+    log.info(
+        "Startup: env=%s alpha_vantage_configured=%s langsmith_tracing=%s",
+        settings.env,
+        settings.alpha_vantage_configured,
+        _tracing_enabled,
+    )
     yield
     log.info("Shutdown.")
 
@@ -69,6 +75,7 @@ class HealthResponse(BaseModel):
     status: str
     env: str
     alpha_vantage_configured: bool
+    langsmith_tracing: bool
 
 
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
@@ -77,6 +84,7 @@ def health() -> HealthResponse:
         status="ok",
         env=settings.env,
         alpha_vantage_configured=settings.alpha_vantage_configured,
+        langsmith_tracing=_tracing_enabled,
     )
 
 

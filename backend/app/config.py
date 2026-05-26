@@ -46,12 +46,18 @@ class Settings(BaseSettings):
     langsmith_api_key: str | None = None
     langsmith_tracing: bool = False
     langsmith_project: str = "financial-agent"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
 
     @property
     def alpha_vantage_configured(self) -> bool:
         """True iff a non-demo Alpha Vantage key is loaded."""
         key = self.alpha_vantage_api_key
         return bool(key) and key.lower() != "demo"
+
+    @property
+    def langsmith_configured(self) -> bool:
+        """True iff both a LangSmith key is present and tracing is opted in."""
+        return bool(self.langsmith_api_key) and self.langsmith_tracing
 
 
 @lru_cache
