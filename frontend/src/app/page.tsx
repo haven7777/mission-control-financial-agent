@@ -154,21 +154,8 @@ export default function Home() {
 // Progress card (replaces skeleton during streaming)
 // ---------------------------------------------------------------------------
 
-const STAGE_LABELS: Record<string, string> = {
-  started: "Initializing…",
-  data_complete: "Price & fundamentals",
-  sentiment_complete: "News sentiment",
-  synthesizing: "Synthesizing report…",
-};
-
 function ProgressCard({ stages }: { stages: ProgressPayload[] }) {
   const completedSet = new Set(stages.map((s) => s.stage));
-
-  // Determine the current "in-progress" stage label for the spinner.
-  const lastStage = stages.at(-1);
-  const spinnerLabel = lastStage
-    ? (STAGE_LABELS[lastStage.stage] ?? lastStage.message)
-    : "Starting…";
 
   return (
     <Card>
@@ -185,11 +172,10 @@ function ProgressCard({ stages }: { stages: ProgressPayload[] }) {
             </li>
           ))}
 
-          {/* Spinner row for the "next" step */}
           {!completedSet.has("synthesizing") && (
             <li className="flex items-center gap-2 animate-pulse">
               <span className="shrink-0 font-mono text-zinc-500">○</span>
-              <span className="text-muted-foreground">{spinnerLabel}</span>
+              <span className="text-muted-foreground">Working…</span>
             </li>
           )}
         </ul>

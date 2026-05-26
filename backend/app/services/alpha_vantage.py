@@ -107,9 +107,13 @@ def _request(params: dict[str, str]) -> dict[str, Any]:
     if "Error Message" in payload:
         raise InvalidTickerError(params.get("symbol", "<unknown>"))
     if "Note" in payload:
-        raise RateLimitedError(str(payload["Note"]))
+        raise RateLimitedError(
+            "Alpha Vantage rate limit reached (burst limit — please wait a moment)"
+        )
     if "Information" in payload:
-        raise RateLimitedError(str(payload["Information"]))
+        raise RateLimitedError(
+            "Alpha Vantage daily quota exceeded (25 req/day on free tier)"
+        )
 
     return payload
 

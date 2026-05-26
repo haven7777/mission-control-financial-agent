@@ -101,6 +101,8 @@
   * `frontend/src/app/page.tsx` rebuilt around a `useAnalysisStream` custom hook (replaces `useQuery`).  During streaming: renders a `ProgressCard` showing completed stages with ✓ checkmarks and a pulsing `○ Working…` spinner for the next step.  On result: transitions instantly to the four-section report (`SynthesisCard`, `QuoteStatsCard`, `SentimentCard`, `ProvenanceFooter`).  On error: shows `ErrorCard`.  The `Skeleton`-based loading state has been removed.
   * `npm run build` clean (Turbopack 5.4s compile, TypeScript 2.4s, 4 static routes).
   * Backend imports verified: `pipeline_stream` imported cleanly; router exposes both `/api/analyze/{ticker}` and `/api/analyze/{ticker}/stream`.
+  * End-to-end UI verified with Playwright (headless Chromium): page loads, IBM ticker submitted, progress card shows ✓ per stage, full 4-section report renders on completion. Provenance footer confirms model `llama-3.3-70b-versatile`. Error card correctly surfaces when Alpha Vantage daily quota is exhausted.
+  * **Security fix** (`alpha_vantage.py`): AV's `Note`/`Information` envelopes no longer leak the raw API key in the error message; replaced with safe generic strings ("Alpha Vantage rate limit reached" / "daily quota exceeded").
 
 ## 🟡 In Progress
 * (none)
