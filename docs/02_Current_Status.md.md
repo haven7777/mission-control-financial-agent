@@ -122,6 +122,16 @@
   * `backend/scripts/test_tracing.py` — 13/13 checks pass: env var propagation, idempotency, disabled-when-no-key, `/health` field presence.
   * **To activate:** add `LANGSMITH_API_KEY=<key>` and `LANGSMITH_TRACING=true` to `backend/.env`; get a free key at https://smith.langchain.com. Every subsequent agent run will appear in the LangSmith dashboard with full prompt/response/latency traces.
 
+* **Playwright E2E test suite landed** — full browser-based smoke + regression coverage with session-scoped server fixtures.
+  * `backend/tests/e2e/conftest.py` — session-scoped fixtures `backend_server` and `frontend_server` start the respective dev servers (uvicorn / `npm run dev`) only if not already running; poll via HTTP readiness (not just port-open). Session-scoped Playwright `browser` (Chromium headless), function-scoped `context` + `page` (pre-navigated to `http://localhost:3000`).
+  * `backend/tests/e2e/test_ui.py` — 11 tests (10 pass, 1 conditionally skipped):
+    * Static structure: h1 title visible, input + Analyze button present.
+    * Input behaviour: button disabled on empty input, enabled after typing, input accepts text.
+    * Submission flow: progress card appears after submit, stream resolves (button returns to "Analyze"), resolved state contains text content.
+    * Conditional paths: success path (all 4 report cards) skips gracefully when external APIs are unavailable; error-card path verified separately; re-submit clears prior state.
+  * `backend/pytest.ini` — `testpaths = tests`, `asyncio_mode = auto`, `asyncio_default_fixture_loop_scope = session`.
+  * **Run:** `cd backend && venv/bin/python -m pytest tests/e2e/ -v` (both servers must be running, or let conftest start them). **Result: 10 passed, 1 skipped in 10.66 s.**
+
 ## 🟡 In Progress
 * (none)
 
@@ -129,15 +139,19 @@
 * (empty — MVP feature-complete per architecture doc)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream costs from runaway calls.
-* Headless-browser E2E (Playwright) — set up before the UI gets more complex than a single page; lets us actually click-test agent flows.
 * Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.
 
+* **Market data source swapped: Alpha Vantage → yfinance.**
+  * `yfinance==1.4.0` added to `requirements.txt`. No API key required.
+  * `app/services/alpha_vantage.py` rewritten to call `yf.Ticker(ticker).info` (one HTTP call per ticker → both quote and overview data). Single `_info_cache` (60s TTL) replaces the two separate AV caches; back-to-back `fetch_global_quote` + `fetch_company_overview` for the same ticker now make only one network request.
+  * `app/models/financial.py` simplified: removed AV-specific field aliases (e.g. `"01. symbol"`, `"PERatio"`) — models now populated with keyword args. `PercentDecimal` type removed; `change_percent` computed directly as `(change / prev_close * 100)`.
+  * `app/config.py`: removed `alpha_vantage_api_key` field and `alpha_vantage_configured` property.
+  * `app/main.py`: `/health` response field renamed `alpha_vantage_configured → market_data_source: "yfinance"`. Startup log updated.
+  * `backend/.env.example`: removed `ALPHA_VANTAGE_API_KEY=` line.
+  * All existing callers unchanged (same filename `alpha_vantage.py`, same public interface). `scripts/test_tracing.py` — 13/13 checks pass.
+  * Verified live: `IBM price=253.84, change=0.87 (+0.3439%), PE=22.46, cap=$238.6B`.
+
 ## 📌 Open follow-ups / known gaps
-* **🚨 Rotate the leaked `ALPHA_VANTAGE_API_KEY`** — the original key was exposed via `httpx`'s INFO-level URL logging during the Data Agent's first live run (now suppressed in code, but the previously-printed value should be treated as compromised). Replace in `backend/.env` after generating a new one at alphavantage.co; restart the backend.
-* Still missing keys for upcoming agent work: `OPENAI_API_KEY` (or `GROQ_API_KEY`), `TAVILY_API_KEY`, `LANGSMITH_API_KEY`. `backend/.env.example` lists the full set.
-* **Alpha Vantage free-tier limits are a real constraint** — 1 req/sec burst, **25 req/day** quota. Cache + throttle (now in `services/cache.py` and `services/rate_limiter.py`) defend against both, but the daily quota is still a hard cap. Likely already exhausted for today (Mon 2026-05-25, UTC); resets at midnight UTC.
-* `InvalidTickerError → 404` code path is implemented but has **never been exercised end-to-end** — every attempt has been preempted by a rate-limit response. Should be straightforward to verify on the next UTC day once the daily quota resets (cache + throttle should now prevent the burst limit from interfering).
 * No git remote configured; `main` lives only locally. Many staged-eligible changes since the initial commit `b60feff` — needs a follow-up commit.
-* No headless-browser E2E setup yet (Playwright would be the natural pick, ~150 MB install). All UI verification so far is HTTP-level + SSR-HTML grep. Tracked above in Deferred.
 * The two docs in `docs/` have a doubled `.md.md` extension (an Obsidian save quirk) — flagged earlier; non-blocking but worth a rename later.
+* `InvalidTickerError → 404` code path: easy to verify now that yfinance has no daily quota. Try `GET /api/quote/ZZZFAKE999`.

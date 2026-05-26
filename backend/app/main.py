@@ -22,11 +22,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-# httpx logs full request URLs (incl. query params) at INFO, which would leak
-# `apikey=...` for Alpha Vantage. Silence it; we surface upstream errors via
-# our own typed exceptions / structured logs instead.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("yfinance").setLevel(logging.WARNING)
 log = logging.getLogger("app")
 
 settings = get_settings()
@@ -36,9 +34,8 @@ _tracing_enabled = configure_langsmith_tracing()
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     log.info(
-        "Startup: env=%s alpha_vantage_configured=%s langsmith_tracing=%s",
+        "Startup: env=%s market_data=yfinance langsmith_tracing=%s",
         settings.env,
-        settings.alpha_vantage_configured,
         _tracing_enabled,
     )
     yield
@@ -74,7 +71,7 @@ app.add_middleware(
 class HealthResponse(BaseModel):
     status: str
     env: str
-    alpha_vantage_configured: bool
+    market_data_source: str
     langsmith_tracing: bool
 
 
@@ -83,7 +80,7 @@ def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
         env=settings.env,
-        alpha_vantage_configured=settings.alpha_vantage_configured,
+        market_data_source="yfinance",
         langsmith_tracing=_tracing_enabled,
     )
 

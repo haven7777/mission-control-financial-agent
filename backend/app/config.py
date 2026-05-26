@@ -33,7 +33,6 @@ class Settings(BaseSettings):
     # Third-party API keys — all optional at config time; services check before calling.
     openai_api_key: str | None = None
     groq_api_key: str | None = None
-    alpha_vantage_api_key: str | None = None
     tavily_api_key: str | None = None
 
     # LLM model selection
@@ -47,12 +46,6 @@ class Settings(BaseSettings):
     langsmith_tracing: bool = False
     langsmith_project: str = "financial-agent"
     langsmith_endpoint: str = "https://api.smith.langchain.com"
-
-    @property
-    def alpha_vantage_configured(self) -> bool:
-        """True iff a non-demo Alpha Vantage key is loaded."""
-        key = self.alpha_vantage_api_key
-        return bool(key) and key.lower() != "demo"
 
     @property
     def langsmith_configured(self) -> bool:

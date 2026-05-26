@@ -1,66 +1,54 @@
-"""Alpha Vantage data-fetch service.
+"""Market data service backed by yfinance (Yahoo Finance).
 
-All financial-data calls go through this module. Returns Pydantic-validated
-models on success; raises a typed `DataFetchError` subclass otherwise.
+Public surface is identical to the former Alpha Vantage implementation so all
+callers (data_agent, routers/quote, test patches) remain unchanged.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
-import httpx
-from pydantic import ValidationError
+import yfinance as yf
 
-from app.config import get_settings
 from app.models.financial import CompanyOverview, StockQuote
 from app.services.cache import TTLCache
-from app.services.rate_limiter import MinIntervalRateLimiter
 
-ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
-REQUEST_TIMEOUT_S = 10.0
+# One yfinance .info call returns both quote and overview data.
+# Cache the raw dict for 60 s so back-to-back calls (quote then overview in
+# the same pipeline run) hit the network only once per ticker per minute.
+_INFO_TTL_S = 60.0
 
-# Upstream is documented at 1 req/sec burst + 25 req/day quota on the free tier.
-# The throttle protects against the burst limit; the cache protects against the
-# daily quota (and makes repeat hits on the same ticker effectively free).
-# 1.2s leaves a small safety margin over Alpha Vantage's strict 1-req-per-second
-# counting (network jitter / clock skew can otherwise push two requests inside
-# the same server-side 1s window).
-MIN_REQUEST_INTERVAL_S = 1.2
-QUOTE_TTL_S = 60.0          # GLOBAL_QUOTE changes intraday; 1 min is a safe window
-OVERVIEW_TTL_S = 86_400.0   # OVERVIEW (fundamentals) refreshes ~daily at most
-
-_rate_limiter = MinIntervalRateLimiter(MIN_REQUEST_INTERVAL_S)
-_quote_cache: TTLCache[StockQuote] = TTLCache(QUOTE_TTL_S)
-_overview_cache: TTLCache[CompanyOverview] = TTLCache(OVERVIEW_TTL_S)
+_info_cache: TTLCache[dict[str, Any]] = TTLCache(_INFO_TTL_S)
 
 log = logging.getLogger(__name__)
 
 
-# --- Exception hierarchy -----------------------------------------------------
+# --- Exception hierarchy (interface-compatible with former AV service) --------
+
 
 class DataFetchError(Exception):
-    """Base class for all Alpha Vantage fetch failures."""
+    """Base class for all market-data fetch failures."""
 
 
 class TimeoutFetchError(DataFetchError):
-    """Upstream request exceeded the timeout budget."""
+    """Upstream request timed out."""
 
 
 class HTTPFetchError(DataFetchError):
-    """Non-2xx HTTP response from Alpha Vantage."""
-
     def __init__(self, status_code: int, body_preview: str) -> None:
         self.status_code = status_code
         super().__init__(f"HTTP {status_code}: {body_preview!r}")
 
 
 class MalformedResponseError(DataFetchError):
-    """Response was not valid JSON or failed Pydantic validation."""
+    """Response failed Pydantic validation or was unexpectedly shaped."""
 
 
 class RateLimitedError(DataFetchError):
-    """Alpha Vantage Note/Information envelope — quota, demo restriction, etc."""
+    """Upstream source is temporarily refusing requests."""
 
 
 class InvalidTickerError(DataFetchError):
@@ -71,95 +59,116 @@ class InvalidTickerError(DataFetchError):
         super().__init__(f"Unknown or empty ticker: {ticker!r}")
 
 
-# --- Internals ---------------------------------------------------------------
-
-def _resolve_api_key() -> str:
-    key = get_settings().alpha_vantage_api_key or "demo"
-    if key.lower() == "demo":
-        log.warning("ALPHA_VANTAGE_API_KEY not configured; using public 'demo' key (IBM only).")
-    return key
+# --- Internals ----------------------------------------------------------------
 
 
-def _request(params: dict[str, str]) -> dict[str, Any]:
-    _rate_limiter.wait()
+def _to_decimal(v: Any) -> Decimal | None:
+    if v is None:
+        return None
     try:
-        response = httpx.get(ALPHA_VANTAGE_URL, params=params, timeout=REQUEST_TIMEOUT_S)
-    except httpx.TimeoutException as exc:
-        raise TimeoutFetchError(
-            f"Alpha Vantage timed out after {REQUEST_TIMEOUT_S}s"
-        ) from exc
-    except httpx.RequestError as exc:
-        raise DataFetchError(f"Network error contacting Alpha Vantage: {exc}") from exc
+        return Decimal(str(v))
+    except (InvalidOperation, TypeError):
+        return None
 
-    if response.status_code >= 400:
-        raise HTTPFetchError(response.status_code, response.text[:200])
 
+def _fetch_info_raw(ticker: str) -> dict[str, Any]:
+    """Return the yfinance .info dict for *ticker*, using the cache when fresh."""
+    cached = _info_cache.get(ticker)
+    if cached is not None:
+        log.info("Cache hit: info %s", ticker)
+        return cached
+
+    log.info("Fetching yfinance info: %s", ticker)
     try:
-        payload = response.json()
-    except ValueError as exc:
-        raise MalformedResponseError(f"Non-JSON response: {exc}") from exc
+        raw: dict[str, Any] = yf.Ticker(ticker).info
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "timeout" in msg or "timed out" in msg:
+            raise TimeoutFetchError(f"yfinance timed out for {ticker}") from exc
+        raise DataFetchError(f"yfinance fetch failed for {ticker}: {exc}") from exc
 
-    if not isinstance(payload, dict):
-        raise MalformedResponseError(
-            f"Expected JSON object, got {type(payload).__name__}"
-        )
+    # yfinance returns a near-empty dict (e.g. {"trailingPegRatio": None}) for
+    # delisted or completely unknown tickers — detect before caching.
+    if not raw or not raw.get("symbol"):
+        raise InvalidTickerError(ticker)
 
-    if "Error Message" in payload:
-        raise InvalidTickerError(params.get("symbol", "<unknown>"))
-    if "Note" in payload:
-        raise RateLimitedError(
-            "Alpha Vantage rate limit reached (burst limit — please wait a moment)"
-        )
-    if "Information" in payload:
-        raise RateLimitedError(
-            "Alpha Vantage daily quota exceeded (25 req/day on free tier)"
-        )
-
-    return payload
+    _info_cache.set(ticker, raw)
+    return raw
 
 
-# --- Public API --------------------------------------------------------------
+def _trading_day(info: dict[str, Any]) -> date:
+    ts = info.get("regularMarketTime")
+    if ts:
+        try:
+            return datetime.fromtimestamp(int(ts), tz=timezone.utc).date()
+        except (ValueError, OSError):
+            pass
+    return datetime.now(timezone.utc).date()
+
+
+# --- Public API ---------------------------------------------------------------
+
 
 def fetch_global_quote(ticker: str) -> StockQuote:
     key = ticker.upper()
-    cached = _quote_cache.get(key)
-    if cached is not None:
-        log.info("Cache hit: GLOBAL_QUOTE %s", key)
-        return cached
+    info = _fetch_info_raw(key)
 
-    payload = _request({"function": "GLOBAL_QUOTE", "symbol": key, "apikey": _resolve_api_key()})
-    raw = payload.get("Global Quote") or {}
-    if not raw:
+    price = _to_decimal(info.get("currentPrice") or info.get("regularMarketPrice"))
+    prev_close = _to_decimal(
+        info.get("previousClose") or info.get("regularMarketPreviousClose")
+    )
+
+    if price is None or prev_close is None:
         raise InvalidTickerError(ticker)
-    try:
-        quote = StockQuote.model_validate(raw)
-    except ValidationError as exc:
-        raise MalformedResponseError(f"StockQuote validation failed: {exc}") from exc
 
-    _quote_cache.set(key, quote)
-    return quote
+    change = price - prev_close
+    change_pct = (change / prev_close * 100) if prev_close else Decimal("0")
+
+    try:
+        return StockQuote(
+            symbol=info.get("symbol", key),
+            open_price=_to_decimal(info.get("open") or info.get("regularMarketOpen")) or Decimal("0"),
+            high=_to_decimal(info.get("dayHigh") or info.get("regularMarketDayHigh")) or Decimal("0"),
+            low=_to_decimal(info.get("dayLow") or info.get("regularMarketDayLow")) or Decimal("0"),
+            price=price,
+            volume=info.get("volume") or info.get("regularMarketVolume") or 0,
+            latest_trading_day=_trading_day(info),
+            previous_close=prev_close,
+            change=change,
+            change_percent=change_pct,
+        )
+    except Exception as exc:
+        raise MalformedResponseError(f"StockQuote construction failed: {exc}") from exc
 
 
 def fetch_company_overview(ticker: str) -> CompanyOverview:
     key = ticker.upper()
-    cached = _overview_cache.get(key)
-    if cached is not None:
-        log.info("Cache hit: OVERVIEW %s", key)
-        return cached
+    info = _fetch_info_raw(key)
 
-    payload = _request({"function": "OVERVIEW", "symbol": key, "apikey": _resolve_api_key()})
-    if not payload.get("Symbol"):
-        raise InvalidTickerError(ticker)
     try:
-        overview = CompanyOverview.model_validate(payload)
-    except ValidationError as exc:
-        raise MalformedResponseError(f"CompanyOverview validation failed: {exc}") from exc
-
-    _overview_cache.set(key, overview)
-    return overview
+        return CompanyOverview(
+            symbol=info.get("symbol", key),
+            name=info.get("longName") or info.get("shortName") or key,
+            asset_type=info.get("quoteType", "EQUITY"),
+            description=info.get("longBusinessSummary") or "",
+            exchange=info.get("exchange") or "",
+            currency=info.get("currency") or "USD",
+            country=info.get("country") or "",
+            sector=info.get("sector") or "",
+            industry=info.get("industry") or "",
+            market_capitalization=info.get("marketCap"),
+            pe_ratio=_to_decimal(info.get("trailingPE")),
+            eps=_to_decimal(info.get("trailingEps")),
+            dividend_yield=_to_decimal(info.get("dividendYield")),
+            beta=_to_decimal(info.get("beta")),
+            week_52_high=_to_decimal(info.get("fiftyTwoWeekHigh")),
+            week_52_low=_to_decimal(info.get("fiftyTwoWeekLow")),
+            analyst_target_price=_to_decimal(info.get("targetMeanPrice")),
+        )
+    except Exception as exc:
+        raise MalformedResponseError(f"CompanyOverview construction failed: {exc}") from exc
 
 
 def clear_caches() -> None:
     """Test/debug helper: drop all cached payloads."""
-    _quote_cache.clear()
-    _overview_cache.clear()
+    _info_cache.clear()

@@ -1,4 +1,4 @@
-"""GET /api/quote/{ticker} — thin pass-through over the Alpha Vantage service.
+"""GET /api/quote/{ticker} — thin pass-through over the market-data service.
 
 Error → HTTP mapping (per the architecture's resilience rules):
     InvalidTickerError  -> 404
@@ -32,7 +32,7 @@ _TICKER_PATTERN = re.compile(r"^[A-Z0-9.\-]{1,10}$")
 @router.get(
     "/quote/{ticker}",
     response_model=StockQuote,
-    response_model_by_alias=False,  # emit snake_case, not raw Alpha Vantage keys
+    response_model_by_alias=False,
 )
 @limiter.limit("30/minute")
 def get_quote(
