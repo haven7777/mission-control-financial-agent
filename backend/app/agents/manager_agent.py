@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ConfigDict
 
@@ -120,12 +120,12 @@ def _format_sentiment(sent: SentimentAgentReport) -> str:
 
 def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
     settings = get_settings()
-    if not settings.groq_api_key:
-        raise MissingLLMKey("GROQ_API_KEY is not set in backend/.env")
+    if not settings.openai_api_key:
+        raise MissingLLMKey("OPENAI_API_KEY is not set in backend/.env")
 
-    llm = ChatGroq(
-        model=settings.groq_model,
-        api_key=settings.groq_api_key,
+    llm = ChatOpenAI(
+        model=settings.openai_model,
+        api_key=settings.openai_api_key,
         temperature=0.0,
     )
     # `method="json_mode"` makes Groq emit raw JSON (no `<function=...>{...}`
@@ -151,7 +151,7 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
         ) + user_payload
 
     log.info("manager_agent: synthesizing for %s via Groq (%s)%s",
-             state.data.ticker, settings.groq_model,
+             state.data.ticker, settings.openai_model,
              " [REVISION]" if state.revision_instruction else "")
     synthesis: ManagerSynthesis = structured.invoke([
         SystemMessage(content=SYSTEM_PROMPT),
@@ -208,7 +208,7 @@ def run_manager_agent(
         key_risks=synthesis.key_risks,
         data_snapshot=data,
         sentiment_snapshot=sentiment,
-        model_used=get_settings().groq_model,
+        model_used=get_settings().openai_model,
     )
 
 

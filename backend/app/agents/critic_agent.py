@@ -19,7 +19,7 @@ import logging
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ConfigDict
 
@@ -129,12 +129,12 @@ class _CriticAgentState(BaseModel):
 
 def _critique_node(state: _CriticAgentState) -> dict[str, Any]:
     settings = get_settings()
-    if not settings.groq_api_key:
-        raise MissingLLMKey("GROQ_API_KEY is not set in backend/.env")
+    if not settings.openai_api_key:
+        raise MissingLLMKey("OPENAI_API_KEY is not set in backend/.env")
 
-    llm = ChatGroq(
-        model=settings.groq_model,
-        api_key=settings.groq_api_key,
+    llm = ChatOpenAI(
+        model=settings.openai_model,
+        api_key=settings.openai_api_key,
         temperature=0.0,
     )
     structured = llm.with_structured_output(CritiqueResult, method="json_mode")
@@ -161,7 +161,7 @@ def _critique_node(state: _CriticAgentState) -> dict[str, Any]:
 
     log.info(
         "critic_agent: auditing %s (round %d) via Groq (%s)",
-        state.ticker, state.revision_round, settings.groq_model,
+        state.ticker, state.revision_round, settings.openai_model,
     )
     result: CritiqueResult = structured.invoke([
         SystemMessage(content=SYSTEM_PROMPT),

@@ -17,7 +17,7 @@ import logging
 from collections import Counter
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ConfigDict
 
@@ -91,12 +91,12 @@ def _classify_node(state: _SentimentAgentState) -> dict:
         raise NoArticlesFoundError("classify node reached with no articles in state")
 
     settings = get_settings()
-    if not settings.groq_api_key:
-        raise MissingLLMKey("GROQ_API_KEY is not set in backend/.env")
+    if not settings.openai_api_key:
+        raise MissingLLMKey("OPENAI_API_KEY is not set in backend/.env")
 
-    llm = ChatGroq(
-        model=settings.groq_model,
-        api_key=settings.groq_api_key,
+    llm = ChatOpenAI(
+        model=settings.openai_model,
+        api_key=settings.openai_api_key,
         temperature=0.0,
     )
     # `method="json_mode"` keeps us compatible with models that don't expose
@@ -113,7 +113,7 @@ def _classify_node(state: _SentimentAgentState) -> dict:
     )
 
     log.info("sentiment_agent: classifying %d articles via Groq (%s)",
-             len(state.articles), settings.groq_model)
+             len(state.articles), settings.openai_model)
     batch: SentimentClassificationBatch = structured.invoke([
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=f"Ticker: {state.ticker}\n\nArticles:\n{user_payload}"),

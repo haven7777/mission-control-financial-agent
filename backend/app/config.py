@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # LLM model selection
     groq_model: str = Field(
         default="llama-3.3-70b-versatile",
-        description="Groq model used for sentiment classification.",
+        description="Groq model used when Groq is the active LLM provider.",
+    )
+    openai_model: str = Field(
+        default="gpt-4o-mini",
+        description="OpenAI model used when OpenAI is the active LLM provider.",
     )
 
     # LangSmith tracing
