@@ -132,26 +132,21 @@
   * `backend/pytest.ini` — `testpaths = tests`, `asyncio_mode = auto`, `asyncio_default_fixture_loop_scope = session`.
   * **Run:** `cd backend && venv/bin/python -m pytest tests/e2e/ -v` (both servers must be running, or let conftest start them). **Result: 10 passed, 1 skipped in 10.66 s.**
 
+* **Critic Agent landed (v3.0 Task 1).**
+  * `backend/app/models/critic.py` — `CritiqueVerdict` enum (`approved`/`needs_revision`), `IssueSeverity` enum (`minor`/`major`/`fatal`), `CritiqueIssue` (field + issue + severity), `CritiqueResult` (LLM-facing structured-output schema: verdict + synthesis_confidence + issues + revision_instruction), `CritiqueReport` (full output: ticker + critique_result + revision_round + critiqued_at).
+  * `backend/app/agents/critic_agent.py` — single-node LangGraph (`critique`) using `ChatGroq.with_structured_output(CritiqueResult, method="json_mode")`. System prompt checks four things: numeric grounding, sentiment alignment, completeness, internal consistency. Reuses `_format_data` / `_format_sentiment` helpers from `manager_agent.py`. Exports `MAX_REVISION_CYCLES = 2` for the pipeline (Task 2). Public surface: `run_critic_agent(report, data, sentiment, revision_round=1) -> CritiqueReport`.
+  * `backend/scripts/test_critic_agent.py` — full pipeline smoke test (Data → Sentiment → Manager → Critic). Live verified on IBM: `NEEDS_REVISION`, confidence 0.70, 4 issues found (1 MAJOR: sentiment divergence not acknowledged; 3 MINOR). Revision instruction generated correctly.
+
 ## 🟡 In Progress
-* (none)
+* Upgrading architecture to v3.0 (AI Research Operating System with Critic Agent and Reflection Loops).
+
+* **Cyclical pipeline with Critic reflection loop landed (v3.0 Task 2).**
+  * `backend/app/agents/pipeline.py` refactored from a linear DAG to a cyclical graph. New shape: `START → data + sentiment (parallel) → manager → critic → (needs_revision ≤ MAX_REVISION_CYCLES) → manager | END`.
+  * `_PipelineState` extended with `critique: CritiqueReport | None` and `revision_round: int = 1`. Critic node increments `revision_round` on each cycle so the routing condition can enforce the cap.
+  * `_should_revise` conditional edge: routes back to `manager` when `verdict == needs_revision AND revision_round ≤ MAX_REVISION_CYCLES`; routes to `END` otherwise (approved or cap exhausted).
+  * `backend/app/agents/manager_agent.py` updated: `run_manager_agent` now accepts optional `revision_instruction: str | None`. When set, the revision directive is prepended to the user prompt so the Manager knows exactly what to fix. Log line shows `[REVISION]` flag on subsequent rounds.
+  * Verified live (IBM): `data → sentiment → manager (round 1) → critic (verdict=approved, confidence=0.95) → END`. Loop fired correctly; no spurious cycles.
 
 ## 🔴 To Do (Next Tasks)
-* (empty — MVP feature-complete per architecture doc)
-
-## 🧊 Deferred (intentionally not in the next 3)
-* Supabase wiring (RLS, pgvector) — MVP scope excludes report history; pgvector is for future RAG.
-
-* **Market data source swapped: Alpha Vantage → yfinance.**
-  * `yfinance==1.4.0` added to `requirements.txt`. No API key required.
-  * `app/services/alpha_vantage.py` rewritten to call `yf.Ticker(ticker).info` (one HTTP call per ticker → both quote and overview data). Single `_info_cache` (60s TTL) replaces the two separate AV caches; back-to-back `fetch_global_quote` + `fetch_company_overview` for the same ticker now make only one network request.
-  * `app/models/financial.py` simplified: removed AV-specific field aliases (e.g. `"01. symbol"`, `"PERatio"`) — models now populated with keyword args. `PercentDecimal` type removed; `change_percent` computed directly as `(change / prev_close * 100)`.
-  * `app/config.py`: removed `alpha_vantage_api_key` field and `alpha_vantage_configured` property.
-  * `app/main.py`: `/health` response field renamed `alpha_vantage_configured → market_data_source: "yfinance"`. Startup log updated.
-  * `backend/.env.example`: removed `ALPHA_VANTAGE_API_KEY=` line.
-  * All existing callers unchanged (same filename `alpha_vantage.py`, same public interface). `scripts/test_tracing.py` — 13/13 checks pass.
-  * Verified live: `IBM price=253.84, change=0.87 (+0.3439%), PE=22.46, cap=$238.6B`.
-
-## 📌 Open follow-ups / known gaps
-* No git remote configured; `main` lives only locally. Many staged-eligible changes since the initial commit `b60feff` — needs a follow-up commit.
-* The two docs in `docs/` have a doubled `.md.md` extension (an Obsidian save quirk) — flagged earlier; non-blocking but worth a rename later.
-* `InvalidTickerError → 404` code path: easy to verify now that yfinance has no daily quota. Try `GET /api/quote/ZZZFAKE999`.
+1. **Update SSE Streaming:** Modify `pipeline_stream.py` to broadcast the Critic's verdict, confidence, and revision rounds to the frontend as `progress` events.
+2. **Upgrade Frontend UI:** Build the "Mission Control" UI. Display the live agent debate, confidence scores, and dynamic routing steps instead of simple loading indicators.

@@ -62,6 +62,7 @@ class _ManagerAgentState(BaseModel):
     data: DataAgentReport
     sentiment: SentimentAgentReport
     synthesis: ManagerSynthesis | None = None
+    revision_instruction: str | None = None
 
 
 # --- Prompt formatting -------------------------------------------------------
@@ -142,8 +143,16 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
         f"NEWS SENTIMENT:\n{sentiment_block}"
     )
 
-    log.info("manager_agent: synthesizing for %s via Groq (%s)",
-             state.data.ticker, settings.groq_model)
+    if state.revision_instruction:
+        user_payload = (
+            f"REVISION REQUIRED — your previous synthesis was rejected by the auditor.\n"
+            f"You MUST address this specific issue before re-synthesizing:\n"
+            f"  {state.revision_instruction}\n\n"
+        ) + user_payload
+
+    log.info("manager_agent: synthesizing for %s via Groq (%s)%s",
+             state.data.ticker, settings.groq_model,
+             " [REVISION]" if state.revision_instruction else "")
     synthesis: ManagerSynthesis = structured.invoke([
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=user_payload),
@@ -167,14 +176,23 @@ _compiled_graph = _build_graph()
 def run_manager_agent(
     data: DataAgentReport,
     sentiment: SentimentAgentReport,
+    revision_instruction: str | None = None,
 ) -> FinalReport:
-    """Run the synthesis graph and return a `FinalReport`."""
+    """Run the synthesis graph and return a `FinalReport`.
+
+    Pass *revision_instruction* on subsequent calls to include the Critic's
+    specific directive in the prompt, forcing the Manager to address the flaw.
+    """
     if data.ticker != sentiment.ticker:
         raise ValueError(
             f"data/sentiment ticker mismatch: {data.ticker!r} vs {sentiment.ticker!r}"
         )
 
-    result = _compiled_graph.invoke({"data": data, "sentiment": sentiment})
+    result = _compiled_graph.invoke({
+        "data": data,
+        "sentiment": sentiment,
+        "revision_instruction": revision_instruction,
+    })
     synthesis: ManagerSynthesis = (
         result["synthesis"] if isinstance(result, dict) else result.synthesis
     )
