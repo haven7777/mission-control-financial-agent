@@ -75,6 +75,27 @@ Set verdict to "approved" only if the synthesis is well-grounded and consistent.
 If ANY major or fatal issue exists, set verdict to "needs_revision". \
 revision_instruction must be null when verdict is "approved", and a single \
 specific directive when "needs_revision".
+
+CALIBRATING synthesis_confidence — follow this rubric exactly:
+
+Start from a baseline of 0.97 and apply the deductions below. \
+Floor the final value at 0.50. Report the exact result; do NOT round to a \
+"nice" number like 0.90 or 0.95.
+
+Deductions:
+  -0.04  per MINOR issue found
+  -0.10  per MAJOR issue found
+  -0.20  per FATAL issue found
+  -0.04  for each key numeric field that is null/missing in the data \
+(P/E ratio, EPS, market cap, 52-week high/low each count separately)
+  -0.08  if overall_sentiment conflicts with overall_view without \
+explicit acknowledgement in the synthesis
+  -0.03  if fewer than 3 news articles were classified (thin evidence base)
+  -0.03  if the stock is trading more than 15% below its 52-week high \
+and the synthesis does not mention this as a risk
+
+Example: baseline 0.97, one MAJOR issue (−0.10), two MINOR issues (−0.08), \
+one missing field (−0.04) → 0.97 − 0.22 = 0.75 → report 0.75.
 """
 
 
