@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Request
 
 from app.models.financial import StockQuote
 from app.services.alpha_vantage import (
@@ -18,6 +18,7 @@ from app.services.alpha_vantage import (
     InvalidTickerError,
     fetch_global_quote,
 )
+from app.services.limiter import limiter
 
 router = APIRouter(prefix="/api", tags=["quote"])
 log = logging.getLogger(__name__)
@@ -33,7 +34,9 @@ _TICKER_PATTERN = re.compile(r"^[A-Z0-9.\-]{1,10}$")
     response_model=StockQuote,
     response_model_by_alias=False,  # emit snake_case, not raw Alpha Vantage keys
 )
+@limiter.limit("30/minute")
 def get_quote(
+    request: Request,
     ticker: str = Path(min_length=1, max_length=10, examples=["IBM"]),
 ) -> StockQuote:
     normalized = ticker.upper()

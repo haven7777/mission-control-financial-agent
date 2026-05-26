@@ -104,6 +104,15 @@
   * End-to-end UI verified with Playwright (headless Chromium): page loads, IBM ticker submitted, progress card shows ✓ per stage, full 4-section report renders on completion. Provenance footer confirms model `llama-3.3-70b-versatile`. Error card correctly surfaces when Alpha Vantage daily quota is exhausted.
   * **Security fix** (`alpha_vantage.py`): AV's `Note`/`Information` envelopes no longer leak the raw API key in the error message; replaced with safe generic strings ("Alpha Vantage rate limit reached" / "daily quota exceeded").
 
+* **Inbound rate limiting shipped** (`slowapi` + per-IP sliding window).
+  * `slowapi==0.1.9` + `limits==5.8.0` added to `requirements.txt`.
+  * `backend/app/services/limiter.py` — module-level `Limiter(key_func=get_remote_address)` singleton imported by both routers. Comment explains the `X-Forwarded-For` upgrade path for production-behind-proxy.
+  * `backend/app/main.py` — `app.state.limiter = limiter`; custom `_rate_limit_handler` exception handler returns `{"detail": "..."}` JSON + `Retry-After: 60` header (matches the frontend's existing error-parsing path; overrides slowapi's default `{"error": ...}` format).
+  * `backend/app/routers/analyze.py` — both `GET /api/analyze/{ticker}` and `GET /api/analyze/{ticker}/stream` decorated with `@limiter.limit("5/minute")`. `request: Request` parameter added (required by slowapi).
+  * `backend/app/routers/quote.py` — `GET /api/quote/{ticker}` decorated with `@limiter.limit("30/minute")`. `request: Request` parameter added.
+  * `GET /health` left unrestricted (health-check endpoints should not be rate-limited).
+  * `backend/scripts/test_rate_limit.py` — TestClient smoke test (no real API calls): fires 31 requests to `/api/quote/IBM` → asserts #31 is 429; fires 6 requests to `/api/analyze/IBM` → asserts #6 is 429; fires 10 rapid `/health` requests → asserts all 200. All 9 checks pass.
+
 ## 🟡 In Progress
 * (none)
 

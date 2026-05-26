@@ -6,13 +6,16 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.routers import analyze as analyze_router
 from app.routers import quote as quote_router
+from app.services.limiter import limiter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,11 +39,22 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     log.info("Shutdown.")
 
 
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded — {exc.detail}. Please wait before retrying."},
+        headers={"Retry-After": "60"},
+    )
+
+
 app = FastAPI(
     title="Multi-Agent Financial System",
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)  # type: ignore[arg-type]
 
 app.add_middleware(
     CORSMiddleware,

@@ -20,11 +20,12 @@ import logging
 import re
 from collections.abc import Generator
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
 
 from app.agents.pipeline import run_full_analysis
 from app.agents.pipeline_stream import run_full_analysis_stream
+from app.services.limiter import limiter
 from app.agents.sentiment_agent import (
     MissingLLMKey,
     NoArticlesFoundError,
@@ -47,7 +48,9 @@ _TICKER_PATTERN = re.compile(r"^[A-Z0-9.\-]{1,10}$")
     response_model=FinalReport,
     response_model_by_alias=False,
 )
+@limiter.limit("5/minute")
 def analyze(
+    request: Request,
     ticker: str = Path(min_length=1, max_length=10, examples=["IBM"]),
 ) -> FinalReport:
     normalized = ticker.upper()
@@ -82,7 +85,9 @@ def _sse_message(event: str, data: dict) -> str:
     response_class=StreamingResponse,
     summary="Stream agent-progress events then the final report via SSE",
 )
+@limiter.limit("5/minute")
 def analyze_stream(
+    request: Request,
     ticker: str = Path(min_length=1, max_length=10, examples=["IBM"]),
 ) -> StreamingResponse:
     normalized = ticker.upper()
