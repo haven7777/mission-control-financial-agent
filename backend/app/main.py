@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.routers import analyze as analyze_router
 from app.routers import quote as quote_router
 
 logging.basicConfig(
@@ -66,3 +67,4 @@ def health() -> HealthResponse:
 
 
 app.include_router(quote_router.router)
+app.include_router(analyze_router.router)

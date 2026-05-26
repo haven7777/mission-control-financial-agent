@@ -76,6 +76,23 @@
   2. `method="json_schema"` (Groq's strict structured-output API) is rejected by `llama-3.3-70b-versatile` (`This model does not support response format 'json_schema'`). Only Llama-4 / GPT-OSS class models on Groq support it.
   3. Resolution: both Sentiment and Manager agents now use `method="json_mode"`, with their system prompts updated to explicitly request a JSON object (Groq's `json_object` mode requires the word "JSON" in the messages). Pydantic validates the output client-side.
 * Verified live (~4.0 s end-to-end pipeline): full Data-stub → Sentiment(live) → Manager(live) run for IBM produced a balanced `MIXED` view, four substantive `key_strengths` (dividend, beta, analyst target, sector position) and four substantive `key_risks` (P/E interpretation, 52-week-band positioning, neutral sentiment caveat, sector competition). All bullets traceable back to either the data snapshot or the sentiment classifications — no hallucinated facts.
+* **Pipeline graph + `/api/analyze` endpoint + frontend UI shipped — full vertical slice through all three agents.**
+  * `backend/app/agents/pipeline.py` — multi-node LangGraph: `START` fans out to `data` and `sentiment` in **parallel** (independent external APIs, no shared state), both join at `manager`. Pydantic `_PipelineState`. Public surface: `run_full_analysis(ticker) -> FinalReport`.
+  * `backend/app/routers/analyze.py` — `GET /api/analyze/{ticker}` with the same regex guard as `/api/quote`, `response_model_by_alias=False` for snake_case JSON. Error mapping: `InvalidTickerError` / `NoArticlesFoundError` → 404; `MissingNewsAPIKey` / `MissingLLMKey` → 500 (server misconfigured); `DataFetchError` / `NewsFetchError` → 503; everything else falls through.
+  * `app/main.py` wires `include_router(analyze_router.router)` alongside the existing quote router.
+  * Frontend `lib/api.ts` rewritten: now exposes typed `FinalReport`, `DataAgentReport`, `SentimentAgentReport`, `ClassifiedArticle`, `NewsArticle`, `OverallView`, `Sentiment`, an `ApiFetchError` class (with `QuoteFetchError` alias for back-compat), shared `_getJson` helper, and `fetchAnalysis(ticker)` alongside the existing `fetchQuote(ticker)`.
+  * Frontend `src/app/page.tsx` rebuilt around `useQuery(["analyze", ticker])`. Renders four sections:
+    1. `SynthesisCard` — company name + ticker, overall-view badge (tone-coloured: positive/green, negative/red, mixed/amber, neutral/zinc), one-line summary, two-column strengths/risks bullet lists with +/− glyphs.
+    2. `QuoteStatsCard` — price + change (green/red), open / prev close / high / low / volume / market cap / P/E / EPS / 52-week range / analyst target / beta — all from `data_snapshot`.
+    3. `SentimentCard` — overall sentiment badge with confidence, plus a per-article list with sentiment-coloured chips, clickable titles (open in new tab), and the LLM's one-sentence reason underneath each.
+    4. `ProvenanceFooter` — model name + generated_at, so users can see what produced the report.
+    Plus `AnalysisSkeleton` (matches the full layout) for loading state and `ErrorCard` for failures.
+  * `npm run build` clean (Turbopack: 5.5s compile, 2.3s TS check, 4 static routes).
+* Verified end-to-end with both dev servers running:
+  * `/health` → 200, `/api/quote/{ticker}` still works (kept for cheap quote-only paths).
+  * **Cross-origin `GET /api/analyze/IBM` → HTTP 200 in 2.76 s** (real fresh data: IBM $253.84, market cap $238.58B, P/E 22.46; 5 news articles classified — Morningstar's quantum-chip-foundry article correctly `bullish 0.90`; Manager synthesized into `MIXED` view with 4 grounded strengths and 4 grounded risks, every bullet traceable to either the data snapshot or the sentiment classifications).
+  * Parallel execution observed in logs — `pipeline: data node` and `pipeline: sentiment node` started at the same wall-clock timestamp; Sentiment finishes in ~1.3 s while Data runs concurrently, then Manager fires once both are in. Net wall-clock ≈ max(data, sentiment) + manager, not sum.
+  * SSR HTML on `http://localhost:3000/` contains all the new UI markers (page title, `Analyze` button, ticker input, aria-label).
 
 ## 🟡 In Progress
 * (none — original 3-task bootstrap + 3-task vertical-slice milestone both complete; awaiting next set.)
@@ -84,9 +101,7 @@
 * (empty — next milestone TBD; natural candidates are LangGraph + the first real Agent, or an SSE streaming endpoint.)
 
 ## 🧊 Deferred (intentionally not in the next 3)
-* **Pipeline graph + FastAPI endpoint** — wrap Data + Sentiment + Manager in a single LangGraph that fans out to Data and Sentiment in parallel and joins at Manager. Expose as `POST /api/analyze/{ticker}` returning the `FinalReport`.
-* **Frontend UI for the full report** — extend `page.tsx` to render the synthesis card (overall view + headline + strengths + risks) alongside the existing quote card and the new sentiment breakdown.
-* SSE streaming endpoint — once multi-agent flow exists and has progress to emit (the user feels the 15-45s "thinking" otherwise).
+* SSE streaming endpoint — `/api/analyze/{ticker}/stream` that emits agent-progress events (data fetched / sentiment classified / synthesis ready) so the UI can show stage-by-stage progress instead of a single skeleton. Current sync endpoint takes ~3 s on a warm path, but cold paths or quota-rate-limited retries can be slow enough that progress reporting becomes important.
 * LangSmith tracing setup — useful now that LLM calls exist; mostly env-var configuration plus `LANGSMITH_API_KEY`.
 * Rate-limiting middleware (inbound, FastAPI side) — meaningful once endpoints actually hit LLMs and we want to protect *our* upstream costs from runaway calls.
 * Headless-browser E2E (Playwright) — before the UI grows past a single page.
