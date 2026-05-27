@@ -61,7 +61,8 @@ def _data_node(state: _PipelineState) -> dict:
 
 def _sentiment_node(state: _PipelineState) -> dict:
     log.info("pipeline: sentiment node for %s", state.ticker)
-    return {"sentiment": run_sentiment_agent(state.ticker)}
+    report = run_sentiment_agent(state.ticker)
+    return {"sentiment": report, "news_sentiment": report.news_sentiment}
 
 
 def _manager_node(state: _PipelineState) -> dict:

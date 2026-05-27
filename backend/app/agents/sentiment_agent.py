@@ -30,7 +30,8 @@ from app.models.sentiment import (
     SentimentAgentReport,
     SentimentClassificationBatch,
 )
-from app.services.tavily import MissingNewsAPIKey, NewsFetchError, search
+from app.services.tavily import MissingNewsAPIKey, NewsFetchError
+from app.tools.news_sentiment import get_news_sentiment
 
 log = logging.getLogger(__name__)
 
@@ -73,17 +74,26 @@ class _SentimentAgentState(BaseModel):
     query: str | None = None
     articles: list[NewsArticle] | None = None
     classifications: list[ArticleSentiment] | None = None
+    news_sentiment_raw: dict = {}
 
 
 # --- Nodes -------------------------------------------------------------------
 
 def _fetch_news_node(state: _SentimentAgentState) -> dict:
-    query = f"{state.ticker} stock news"
-    log.info("sentiment_agent: searching Tavily for %r", query)
-    result = search(query, max_results=DEFAULT_MAX_ARTICLES)
-    if not result.articles:
+    log.info("sentiment_agent: fetching narratives for %s via NewsSentimentTool", state.ticker)
+    raw: dict = get_news_sentiment.run(state.ticker)
+    articles = [
+        NewsArticle(
+            title=a["title"],
+            url=a["url"],
+            content=a["content"],
+            published_date=a.get("published_date"),
+        )
+        for a in raw.get("articles", [])
+    ]
+    if not articles:
         raise NoArticlesFoundError(f"No news articles found for ticker {state.ticker!r}")
-    return {"query": query, "articles": result.articles}
+    return {"query": raw.get("query", state.ticker), "articles": articles, "news_sentiment_raw": raw}
 
 
 def _classify_node(state: _SentimentAgentState) -> dict:
@@ -166,6 +176,7 @@ def run_sentiment_agent(ticker: str) -> SentimentAgentReport:
     query = result["query"]
     articles: list[NewsArticle] = result["articles"]
     classifications: list[ArticleSentiment] = result["classifications"]
+    news_sentiment_raw: dict = result["news_sentiment_raw"] if isinstance(result, dict) else result.news_sentiment_raw
 
     classified: list[ClassifiedArticle] = [
         ClassifiedArticle(
@@ -192,6 +203,7 @@ def run_sentiment_agent(ticker: str) -> SentimentAgentReport:
         overall_sentiment=overall,
         overall_confidence=overall_confidence,
         classified=classified,
+        news_sentiment=news_sentiment_raw,
     )
 
 
