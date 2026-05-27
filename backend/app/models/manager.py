@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.agents import DataAgentReport
 from app.models.debate import BullCase, BearCase
+from app.models.filings import FilingsContext
 from app.models.sentiment import SentimentAgentReport
 
 
@@ -59,6 +60,9 @@ class FinalReport(BaseModel):
     # Debate (populated when debate mode is active)
     bull_case: BullCase | None = None
     bear_case: BearCase | None = None
+
+    # SEC filings context (populated when Supabase + EDGAR are available)
+    filings_context: FilingsContext | None = None
 
     # Grounding so consumers can drill down without a second request
     data_snapshot: DataAgentReport
