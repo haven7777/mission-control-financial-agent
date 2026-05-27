@@ -28,11 +28,11 @@ from pydantic import BaseModel, ConfigDict
 from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
 from app.agents.manager_agent import run_manager_agent
-from app.agents.sentiment_agent import run_sentiment_agent
+from app.agents.sentiment_agent import NoArticlesFoundError, run_sentiment_agent
 from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueReport, CritiqueVerdict
 from app.models.manager import FinalReport
-from app.models.sentiment import SentimentAgentReport
+from app.models.sentiment import Sentiment, SentimentAgentReport
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,19 @@ def _data_node(state: _PipelineState) -> dict:
 
 def _sentiment_node(state: _PipelineState) -> dict:
     log.info("pipeline: sentiment node for %s", state.ticker)
-    report = run_sentiment_agent(state.ticker)
+    try:
+        report = run_sentiment_agent(state.ticker)
+    except NoArticlesFoundError:
+        log.warning("pipeline: no articles found for %s — using zero-news sentinel", state.ticker)
+        report = SentimentAgentReport(
+            ticker=state.ticker,
+            query="N/A",
+            articles_analyzed=0,
+            overall_sentiment=Sentiment.NEUTRAL,
+            overall_confidence=0.0,
+            classified=[],
+            is_zero_news=True,
+        )
     return {"sentiment": report, "news_sentiment": report.news_sentiment}
 
 

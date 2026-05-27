@@ -60,3 +60,4 @@ class SentimentAgentReport(BaseModel):
     classified: list[ClassifiedArticle]
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     news_sentiment: dict = Field(default_factory=dict)
+    is_zero_news: bool = False

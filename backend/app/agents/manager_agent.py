@@ -102,6 +102,12 @@ def _format_data(data: DataAgentReport) -> str:
 
 
 def _format_sentiment(sent: SentimentAgentReport) -> str:
+    if sent.is_zero_news:
+        return (
+            "NEWS SENTIMENT: No market news articles were found for this ticker. "
+            "Sentiment analysis is unavailable. Base your synthesis on the "
+            "quantitative fundamentals only and note the absence of news coverage."
+        )
     lines = [
         f"Overall news sentiment: {sent.overall_sentiment.value} "
         f"(confidence {sent.overall_confidence:.2f})",

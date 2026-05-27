@@ -25,11 +25,11 @@ from typing import Any, Iterator
 from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
 from app.agents.manager_agent import run_manager_agent
-from app.agents.sentiment_agent import run_sentiment_agent
+from app.agents.sentiment_agent import NoArticlesFoundError, run_sentiment_agent
 from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueVerdict
 from app.models.manager import FinalReport
-from app.models.sentiment import SentimentAgentReport
+from app.models.sentiment import Sentiment, SentimentAgentReport
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +59,17 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     def _run_sentiment() -> None:
         try:
             result_q.put(("sentiment_ok", run_sentiment_agent(normalized)))
+        except NoArticlesFoundError:
+            empty = SentimentAgentReport(
+                ticker=normalized,
+                query="N/A",
+                articles_analyzed=0,
+                overall_sentiment=Sentiment.NEUTRAL,
+                overall_confidence=0.0,
+                classified=[],
+                is_zero_news=True,
+            )
+            result_q.put(("sentiment_ok", empty))
         except Exception as exc:  # noqa: BLE001
             result_q.put(("sentiment_err", exc))
 
@@ -83,12 +94,18 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
 
         elif tag == "sentiment_ok":
             sentiment_report = value
-            n = value.articles_analyzed
             remaining -= 1
-            yield _progress(
-                "sentiment_complete",
-                f"Analyzed {n} news article{'s' if n != 1 else ''}",
-            )
+            if value.is_zero_news:
+                yield _progress(
+                    "sentiment_unavailable",
+                    "No news articles found — continuing with fundamentals-only analysis",
+                )
+            else:
+                n = value.articles_analyzed
+                yield _progress(
+                    "sentiment_complete",
+                    f"Analyzed {n} news article{'s' if n != 1 else ''}",
+                )
 
         elif tag in ("data_err", "sentiment_err"):
             log.warning("pipeline_stream: %s failed: %s", tag, value)
