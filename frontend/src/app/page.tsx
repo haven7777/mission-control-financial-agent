@@ -82,23 +82,31 @@ function useAnalysisStream(ticker: string | null): StreamState {
 // ---------------------------------------------------------------------------
 
 const STAGE_AGENT: Record<ProgressStage, string> = {
-  started:            "System",
-  data_complete:      "Data Agent",
-  sentiment_complete: "Sentiment Agent",
-  synthesizing:       "Manager Agent",
-  critiquing:         "Critic Agent",
-  revising:           "Critic Agent",
-  approved:           "Critic Agent",
+  started:               "System",
+  data_complete:         "Data Agent",
+  sentiment_complete:    "Sentiment Agent",
+  sentiment_unavailable: "Sentiment Agent",
+  debating:              "Debate Agents",
+  debate_complete:       "Debate Agents",
+  debate_skipped:        "Debate Agents",
+  synthesizing:          "Manager Agent",
+  critiquing:            "Critic Agent",
+  revising:              "Critic Agent",
+  approved:              "Critic Agent",
 };
 
 const STAGE_STATUS: Record<ProgressStage, AgentEventStatus> = {
-  started:            "running",
-  data_complete:      "done",
-  sentiment_complete: "done",
-  synthesizing:       "running",
-  critiquing:         "running",
-  revising:           "conflict",
-  approved:           "approved",
+  started:               "running",
+  data_complete:         "done",
+  sentiment_complete:    "done",
+  sentiment_unavailable: "done",
+  debating:              "running",
+  debate_complete:       "done",
+  debate_skipped:        "conflict",
+  synthesizing:          "running",
+  critiquing:            "running",
+  revising:              "conflict",
+  approved:              "approved",
 };
 
 function stagesToEvents(stages: ProgressPayload[]): AgentEvent[] {

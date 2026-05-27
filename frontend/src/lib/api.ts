@@ -70,9 +70,22 @@ export type SentimentAgentReport = {
   overall_confidence: number;
   classified: ClassifiedArticle[];
   fetched_at: string;
+  is_zero_news: boolean;
 };
 
 export type OverallView = "positive" | "negative" | "mixed" | "neutral";
+
+export type BullCase = {
+  ticker: string;
+  thesis: string;
+  key_arguments: string[];
+};
+
+export type BearCase = {
+  ticker: string;
+  thesis: string;
+  key_arguments: string[];
+};
 
 export type FinalReport = {
   ticker: string;
@@ -81,6 +94,8 @@ export type FinalReport = {
   one_line_summary: string;
   key_strengths: string[];
   key_risks: string[];
+  bull_case: BullCase | null;
+  bear_case: BearCase | null;
   data_snapshot: DataAgentReport;
   sentiment_snapshot: SentimentAgentReport;
   model_used: string;
@@ -141,6 +156,10 @@ export type ProgressStage =
   | "started"
   | "data_complete"
   | "sentiment_complete"
+  | "sentiment_unavailable"
+  | "debating"
+  | "debate_complete"
+  | "debate_skipped"
   | "synthesizing"
   | "critiquing"
   | "revising"
