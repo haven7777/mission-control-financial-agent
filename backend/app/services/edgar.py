@@ -12,24 +12,32 @@ EDGAR fair-use policy requires:
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 
 import httpx
 
 log = logging.getLogger(__name__)
 
+_EDGAR_USER_AGENT = os.environ.get(
+    "EDGAR_USER_AGENT", "financial-agent/1.0 benbenben12322@gmail.com"
+)
 _EDGAR_HEADERS = {
-    "User-Agent": "financial-agent/1.0 benbenben12322@gmail.com",
+    "User-Agent": _EDGAR_USER_AGENT,
     "Accept-Encoding": "gzip, deflate",
 }
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 _FILING_BASE = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc_nodash}/{doc}"
-_MAX_TEXT_BYTES = 5_000_000  # 5 MB cap — sufficient for Risk Factors + MD&A
+_MAX_TEXT_CHARS = 5_000_000  # 5 M char cap — sufficient for Risk Factors + MD&A
 
 
 class FilingNotFoundError(Exception):
     """Raised when EDGAR has no 10-K/10-Q for a given ticker."""
+
+
+class FilingFetchError(Exception):
+    """Raised when an EDGAR HTTP fetch fails (timeout, bad status, etc.)."""
 
 
 @lru_cache(maxsize=1)
@@ -53,10 +61,10 @@ def _get_cik(ticker: str) -> int:
 
 
 def get_latest_filing_text(ticker: str) -> tuple[str, str, str | None]:
-    """Return (html_text, form_type, filing_date_iso) for the most recent 10-K or 10-Q.
+    """Return (raw_text, form_type, filing_date) for the most recently filed 10-K or 10-Q.
 
-    Tries 10-K first, falls back to 10-Q.
-    Raises FilingNotFoundError if no filing is found.
+    Raises FilingNotFoundError if the ticker is unknown or has no 10-K/10-Q.
+    Raises FilingFetchError on network/HTTP errors when downloading the document.
     """
     normalized = ticker.strip().upper()
     cik = _get_cik(normalized)
@@ -73,22 +81,23 @@ def get_latest_filing_text(ticker: str) -> tuple[str, str, str | None]:
     primary_docs: list[str] = recent.get("primaryDocument", [])
     filing_dates: list[str] = recent.get("filingDate", [])
 
-    for i, form in enumerate(forms):
+    for form, acc, doc, date_ in zip(forms, accessions, primary_docs, filing_dates):
         if form not in ("10-K", "10-Q"):
             continue
-        acc_nodash = accessions[i].replace("-", "")
-        doc_url = _FILING_BASE.format(cik=cik, acc_nodash=acc_nodash, doc=primary_docs[i])
-        log.info("edgar: downloading %s %s from %s", form, filing_dates[i], doc_url)
-        doc_resp = httpx.get(
-            doc_url,
-            headers=_EDGAR_HEADERS,
-            timeout=60,
-            follow_redirects=True,
-        )
-        doc_resp.raise_for_status()
-        # Cap text to avoid processing enormous filings
-        text = doc_resp.text[:_MAX_TEXT_BYTES]
-        return text, form, filing_dates[i] if i < len(filing_dates) else None
+        acc_nodash = acc.replace("-", "")
+        doc_url = _FILING_BASE.format(cik=cik, acc_nodash=acc_nodash, doc=doc)
+        log.info("edgar: downloading %s %s from %s", form, date_, doc_url)
+        try:
+            doc_resp = httpx.get(doc_url, headers=_EDGAR_HEADERS, timeout=60, follow_redirects=True)
+            doc_resp.raise_for_status()
+        except httpx.TimeoutException as exc:
+            raise FilingFetchError(f"Timeout fetching {doc_url}") from exc
+        except httpx.HTTPStatusError as exc:
+            raise FilingFetchError(
+                f"HTTP {exc.response.status_code} fetching {doc_url}"
+            ) from exc
+        text = doc_resp.text[:_MAX_TEXT_CHARS]
+        return text, form, date_
 
     raise FilingNotFoundError(
         f"No 10-K or 10-Q found in EDGAR for ticker {normalized!r}"
