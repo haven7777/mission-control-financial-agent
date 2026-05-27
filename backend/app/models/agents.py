@@ -28,6 +28,7 @@ class DataAgentReport(BaseModel):
     quote: StockQuote
     overview: CompanyOverview
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    financial_metrics: dict = Field(default_factory=dict)
 
     @property
     def market_cap_billions(self) -> Decimal | None:
