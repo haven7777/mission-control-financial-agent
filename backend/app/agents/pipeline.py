@@ -43,6 +43,8 @@ class _PipelineState(BaseModel):
     ticker: str
     data: DataAgentReport | None = None
     sentiment: SentimentAgentReport | None = None
+    financial_metrics: dict = {}
+    news_sentiment: dict = {}
     final: FinalReport | None = None
     critique: CritiqueReport | None = None
     revision_round: int = 1
