@@ -3,13 +3,11 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class BullCase(BaseModel):
     """Structured bullish investment case from the Bull Agent."""
-
-    model_config = ConfigDict(extra="forbid")
 
     ticker: str
     thesis: str = Field(description="One bold paragraph making the bullish case.")
@@ -22,8 +20,6 @@ class BullCase(BaseModel):
 
 class BearCase(BaseModel):
     """Structured bearish investment case from the Bear Agent."""
-
-    model_config = ConfigDict(extra="forbid")
 
     ticker: str
     thesis: str = Field(description="One bold paragraph making the bearish case.")

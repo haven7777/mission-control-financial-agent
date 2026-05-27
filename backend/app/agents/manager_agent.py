@@ -156,7 +156,7 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
             f"  {state.revision_instruction}\n\n"
         ) + user_payload
 
-    log.info("manager_agent: synthesizing for %s via Groq (%s)%s",
+    log.info("manager_agent: synthesizing for %s via OpenAI (%s)%s",
              state.data.ticker, settings.openai_model,
              " [REVISION]" if state.revision_instruction else "")
     synthesis: ManagerSynthesis = structured.invoke([
