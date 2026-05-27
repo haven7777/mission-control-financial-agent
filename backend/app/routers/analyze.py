@@ -36,6 +36,7 @@ from app.services.alpha_vantage import (
     InvalidTickerError,
 )
 from app.services.tavily import MissingNewsAPIKey, NewsFetchError
+from app.services.report_cache import get_cached_report, store_report
 
 router = APIRouter(prefix="/api", tags=["analyze"])
 log = logging.getLogger(__name__)
@@ -57,8 +58,14 @@ def analyze(
     if not _TICKER_PATTERN.match(normalized):
         raise HTTPException(status_code=422, detail=f"Invalid ticker format: {ticker!r}")
 
+    # Check cache first — returns None when Supabase is not configured or cache is cold
+    cached = get_cached_report(normalized)
+    if cached is not None:
+        log.info("analyze: cache hit for %s", normalized)
+        return cached
+
     try:
-        return run_full_analysis(normalized)
+        report = run_full_analysis(normalized)
     except (InvalidTickerError, NoArticlesFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (MissingNewsAPIKey, MissingLLMKey) as exc:
@@ -74,6 +81,14 @@ def analyze(
             status_code=503,
             detail=f"Upstream error ({type(exc).__name__}): {exc}",
         ) from exc
+
+    # Store fresh report (non-fatal)
+    try:
+        store_report(report)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("analyze: failed to cache report for %s: %s", normalized, exc)
+
+    return report
 
 
 def _sse_message(event: str, data: dict) -> str:
