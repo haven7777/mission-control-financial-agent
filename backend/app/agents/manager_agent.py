@@ -22,25 +22,27 @@ from pydantic import BaseModel, ConfigDict
 
 from app.config import get_settings
 from app.models.agents import DataAgentReport
+from app.models.debate import BullCase, BearCase
 from app.models.manager import FinalReport, ManagerSynthesis
 from app.models.sentiment import SentimentAgentReport
 
 log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
-    "You are a senior investment analyst. You will receive a structured "
-    "summary of (1) recent financial / fundamental data for a publicly-"
-    "traded stock and (2) sentiment from recent news coverage.\n\n"
-    "Synthesize these into a balanced, investor-facing brief. Respond as a "
-    "JSON object matching this schema:\n"
+    "You are a senior investment analyst. You will receive (1) financial / "
+    "fundamental data for a publicly-traded stock, (2) sentiment from recent "
+    "news coverage, and optionally (3) a structured bull/bear debate from "
+    "specialist analysts.\n\n"
+    "Synthesize everything into a balanced, investor-facing brief. Respond as "
+    "a JSON object matching this schema:\n"
     '  {"overall_view": "positive"|"negative"|"mixed"|"neutral",\n'
     '   "one_line_summary": "<one sentence>",\n'
     '   "key_strengths": ["<sentence>", ...],   // 2-4 items\n'
     '   "key_risks":     ["<sentence>", ...]}   // 2-4 items\n\n'
-    "Be balanced. Acknowledge uncertainty. If fundamentals and news "
-    "sentiment disagree, call that out explicitly. Each strength and risk "
-    "must be a single sentence grounded in the supplied data and/or "
-    "sentiment. Do not invent facts outside the provided summaries."
+    "Be balanced. Acknowledge uncertainty. If fundamentals and sentiment "
+    "disagree, call that out explicitly. When a bull/bear debate is provided, "
+    "engage with the strongest arguments from both sides in your strengths and "
+    "risks. Each bullet must be grounded in the supplied data. Do not invent facts."
 )
 
 
@@ -63,6 +65,8 @@ class _ManagerAgentState(BaseModel):
     sentiment: SentimentAgentReport
     synthesis: ManagerSynthesis | None = None
     revision_instruction: str | None = None
+    bull_case: BullCase | None = None
+    bear_case: BearCase | None = None
 
 
 # --- Prompt formatting -------------------------------------------------------
@@ -149,6 +153,17 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
         f"NEWS SENTIMENT:\n{sentiment_block}"
     )
 
+    if state.bull_case and state.bear_case:
+        bull_args = "\n".join(f"  • {a}" for a in state.bull_case.key_arguments)
+        bear_args = "\n".join(f"  • {a}" for a in state.bear_case.key_arguments)
+        user_payload += (
+            f"\n\nBULL CASE (strongest upside arguments):\n"
+            f"Thesis: {state.bull_case.thesis}\n{bull_args}"
+            f"\n\nBEAR CASE (strongest downside arguments):\n"
+            f"Thesis: {state.bear_case.thesis}\n{bear_args}"
+            f"\n\nWeigh the bull and bear cases above when forming your final view."
+        )
+
     if state.revision_instruction:
         user_payload = (
             f"REVISION REQUIRED — your previous synthesis was rejected by the auditor.\n"
@@ -183,11 +198,15 @@ def run_manager_agent(
     data: DataAgentReport,
     sentiment: SentimentAgentReport,
     revision_instruction: str | None = None,
+    bull_case: BullCase | None = None,
+    bear_case: BearCase | None = None,
 ) -> FinalReport:
     """Run the synthesis graph and return a `FinalReport`.
 
     Pass *revision_instruction* on subsequent calls to include the Critic's
     specific directive in the prompt, forcing the Manager to address the flaw.
+    Pass *bull_case* and *bear_case* to enable debate-mode synthesis, where
+    the Manager weighs the structured bull/bear arguments in its final view.
     """
     if data.ticker != sentiment.ticker:
         raise ValueError(
@@ -198,6 +217,8 @@ def run_manager_agent(
         "data": data,
         "sentiment": sentiment,
         "revision_instruction": revision_instruction,
+        "bull_case": bull_case,
+        "bear_case": bear_case,
     })
     synthesis: ManagerSynthesis = (
         result["synthesis"] if isinstance(result, dict) else result.synthesis
@@ -215,6 +236,8 @@ def run_manager_agent(
         data_snapshot=data,
         sentiment_snapshot=sentiment,
         model_used=get_settings().openai_model,
+        bull_case=bull_case,
+        bear_case=bear_case,
     )
 
 
