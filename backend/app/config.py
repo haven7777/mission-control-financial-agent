@@ -56,6 +56,19 @@ class Settings(BaseSettings):
         """True iff both a LangSmith key is present and tracing is opted in."""
         return bool(self.langsmith_api_key) and self.langsmith_tracing
 
+    # ── Supabase (report cache + future pgvector RAG) ─────────────────────
+    supabase_url: str | None = None
+    supabase_service_role_key: str | None = None
+    report_cache_ttl_hours: int = Field(
+        default=24,
+        description="Hours before a cached FinalReport is considered stale.",
+    )
+
+    @property
+    def supabase_configured(self) -> bool:
+        """True iff both Supabase URL and service-role key are present."""
+        return bool(self.supabase_url) and bool(self.supabase_service_role_key)
+
 
 @lru_cache
 def get_settings() -> Settings:
