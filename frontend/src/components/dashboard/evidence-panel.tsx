@@ -109,12 +109,7 @@ export function EvidencePanel({ data, sentiment, showOnly }: EvidencePanelProps)
       <ScrollArea className="h-full">
         <div className="space-y-4">
           {sentiment.is_zero_news ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-4 text-foreground/50">
-              <Newspaper className="w-10 h-10 opacity-40" />
-              <p className="text-sm text-center max-w-xs">
-                No news articles were found for this ticker. Sentiment analysis was skipped — the report is based on fundamentals only.
-              </p>
-            </div>
+            <ZeroNewsEmptyState />
           ) : (
             newsItems.map((item, i) => (
               <NewsCard key={i} item={item} getSentimentColor={getSentimentColor} getSentimentIcon={getSentimentIcon} />
@@ -158,12 +153,7 @@ export function EvidencePanel({ data, sentiment, showOnly }: EvidencePanelProps)
         <ScrollArea className="flex-1 p-5">
           <div className="space-y-4">
             {sentiment.is_zero_news ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-4 text-foreground/50">
-                <Newspaper className="w-10 h-10 opacity-40" />
-                <p className="text-sm text-center max-w-xs">
-                  No news articles were found for this ticker. Sentiment analysis was skipped — the report is based on fundamentals only.
-                </p>
-              </div>
+              <ZeroNewsEmptyState />
             ) : (
               newsItems.map((item, i) => (
                 <NewsCard key={i} item={item} getSentimentColor={getSentimentColor} getSentimentIcon={getSentimentIcon} />
@@ -217,5 +207,17 @@ function NewsCard({
         <span>{item.time}</span>
       </div>
     </a>
+  )
+}
+
+function ZeroNewsEmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 gap-4 text-foreground/50">
+      <Newspaper className="w-10 h-10 opacity-40" aria-hidden="true" />
+      <p className="text-sm text-center max-w-xs">
+        No news articles were found for this ticker. Sentiment analysis was
+        skipped — the report is based on fundamentals only.
+      </p>
+    </div>
   )
 }
