@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FilingChunk(BaseModel):
@@ -10,9 +12,9 @@ class FilingChunk(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    section: str       # 'risk_factors' | 'mda'
+    section: Literal["risk_factors", "mda"]
     content: str
-    similarity: float  # cosine similarity 0-1
+    similarity: float = Field(ge=0.0, le=1.0, description="Cosine similarity score.")
 
 
 class FilingsContext(BaseModel):
@@ -21,6 +23,6 @@ class FilingsContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ticker: str
-    form_type: str              # '10-K' | '10-Q'
+    form_type: Literal["10-K", "10-Q"]
     chunks: list[FilingChunk]
     is_empty: bool = False      # True when EDGAR returned nothing or Supabase unconfigured
