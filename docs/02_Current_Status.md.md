@@ -15,6 +15,14 @@
   - Config verified clean: `supabase_configured: False`, `report_cache_ttl_hours: 24`
   - Commit: `6f11c13`
 
+- Phase 4A Task 3: Reports table DDL
+  - `backend/scripts/setup_supabase.sql` created with full schema
+  - `reports` table: `id` (uuid PK), `ticker` (text NOT NULL), `report_json` (jsonb NOT NULL), `generated_at` (timestamptz NOT NULL), `created_at` (timestamptz DEFAULT now())
+  - Composite index on `(ticker, generated_at DESC)` for fast ticker-based lookups
+  - Both CREATE TABLE and CREATE INDEX use `IF NOT EXISTS`
+  - Future-proofed comment for Phase 4B pgvector semantic search column
+  - Commit: `1a52f7b`
+
 **Next:** Phase 4A Task 2 (Supabase client initialization + report cache service)
 
 ## 📋 Track 1: Near-Term Architecture Upgrades (Current Task)
