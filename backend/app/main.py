@@ -34,9 +34,10 @@ _tracing_enabled = configure_langsmith_tracing()
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     log.info(
-        "Startup: env=%s market_data=yfinance langsmith_tracing=%s",
+        "Startup: env=%s market_data=yfinance langsmith_tracing=%s supabase_cache=%s",
         settings.env,
         _tracing_enabled,
+        settings.supabase_configured,
     )
     yield
     log.info("Shutdown.")
@@ -73,6 +74,7 @@ class HealthResponse(BaseModel):
     env: str
     market_data_source: str
     langsmith_tracing: bool
+    supabase_cache: bool
 
 
 @app.get("/health", response_model=HealthResponse, tags=["meta"])
@@ -82,6 +84,7 @@ def health() -> HealthResponse:
         env=settings.env,
         market_data_source="yfinance",
         langsmith_tracing=_tracing_enabled,
+        supabase_cache=settings.supabase_configured,
     )
 
 
