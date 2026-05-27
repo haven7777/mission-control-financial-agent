@@ -44,6 +44,8 @@ _SECTION_ENDS: dict[str, list[str]] = {
 
 def _html_to_text(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style"]):
+        tag.decompose()
     return soup.get_text(separator="\n", strip=True)
 
 
@@ -67,7 +69,6 @@ def _find_section(text: str, section: str) -> str:
         m = re.search(pattern, search_region)
         if m:
             end_pos = min(end_pos, start_pos + 200 + m.start())
-            break
 
     raw = text[start_pos:end_pos].strip()
     return raw[:_MAX_SECTION_CHARS]
