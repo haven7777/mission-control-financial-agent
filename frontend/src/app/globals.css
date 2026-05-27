@@ -45,6 +45,7 @@
   --color-agent-sentiment: var(--agent-sentiment);
   --color-agent-manager: var(--agent-manager);
   --color-agent-critic: var(--agent-critic);
+  --color-agent-debate: oklch(0.72 0.18 290);
   --color-success: var(--success);
   --color-warning: var(--warning);
   /* Radius scale */
@@ -87,6 +88,7 @@
   --agent-sentiment: oklch(0.75 0.18 145);
   --agent-manager: oklch(0.80 0.16 85);
   --agent-critic: oklch(0.65 0.20 25);
+  --agent-debate: oklch(0.72 0.18 290);
   --success: oklch(0.70 0.18 145);
   --warning: oklch(0.80 0.16 85);
   --radius: 0.625rem;
@@ -129,6 +131,7 @@
   --agent-sentiment: oklch(0.75 0.18 145);
   --agent-manager: oklch(0.80 0.16 85);
   --agent-critic: oklch(0.65 0.20 25);
+  --agent-debate: oklch(0.72 0.18 290);
   --success: oklch(0.70 0.18 145);
   --warning: oklch(0.80 0.16 85);
   --sidebar: oklch(0.11 0.01 240);
