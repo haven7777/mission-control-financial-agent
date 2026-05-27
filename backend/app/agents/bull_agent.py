@@ -23,6 +23,11 @@ from app.models.sentiment import SentimentAgentReport
 
 log = logging.getLogger(__name__)
 
+
+class BullAgentError(Exception):
+    """Raised when the Bull Agent fails to produce a valid case."""
+
+
 _SYSTEM_PROMPT = (
     "You are a contrarian BULL analyst. Your sole job is to build the "
     "STRONGEST possible bullish investment case for the stock using ONLY "
@@ -58,8 +63,15 @@ def run_bull_agent(
         f"NEWS & SENTIMENT:\n{_format_sentiment(sentiment)}"
     )
     log.info("bull_agent: building bull case for %s", data.ticker)
-    result: BullCase = structured.invoke([
-        SystemMessage(content=_SYSTEM_PROMPT),
-        HumanMessage(content=payload),
-    ])
+    try:
+        result: BullCase = structured.invoke([
+            SystemMessage(content=_SYSTEM_PROMPT),
+            HumanMessage(content=payload),
+        ])
+    except Exception as exc:
+        log.error("bull_agent: LLM call failed for %s: %s", data.ticker, exc)
+        raise BullAgentError(f"Failed to generate bull case for {data.ticker}") from exc
     return result
+
+
+__all__ = ["run_bull_agent", "BullAgentError"]

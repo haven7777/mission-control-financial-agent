@@ -22,6 +22,11 @@ from app.models.sentiment import SentimentAgentReport
 
 log = logging.getLogger(__name__)
 
+
+class BearAgentError(Exception):
+    """Raised when the Bear Agent fails to produce a valid case."""
+
+
 _SYSTEM_PROMPT = (
     "You are a contrarian BEAR analyst. Your sole job is to build the "
     "STRONGEST possible bearish investment case for the stock using ONLY "
@@ -57,8 +62,15 @@ def run_bear_agent(
         f"NEWS & SENTIMENT:\n{_format_sentiment(sentiment)}"
     )
     log.info("bear_agent: building bear case for %s", data.ticker)
-    result: BearCase = structured.invoke([
-        SystemMessage(content=_SYSTEM_PROMPT),
-        HumanMessage(content=payload),
-    ])
+    try:
+        result: BearCase = structured.invoke([
+            SystemMessage(content=_SYSTEM_PROMPT),
+            HumanMessage(content=payload),
+        ])
+    except Exception as exc:
+        log.error("bear_agent: LLM call failed for %s: %s", data.ticker, exc)
+        raise BearAgentError(f"Failed to generate bear case for {data.ticker}") from exc
     return result
+
+
+__all__ = ["run_bear_agent", "BearAgentError"]
