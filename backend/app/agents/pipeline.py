@@ -55,7 +55,8 @@ class _PipelineState(BaseModel):
 
 def _data_node(state: _PipelineState) -> dict:
     log.info("pipeline: data node for %s", state.ticker)
-    return {"data": run_data_agent(state.ticker)}
+    report = run_data_agent(state.ticker)
+    return {"data": report, "financial_metrics": report.financial_metrics}
 
 
 def _sentiment_node(state: _PipelineState) -> dict:

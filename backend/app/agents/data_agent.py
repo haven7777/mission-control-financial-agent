@@ -20,6 +20,7 @@ from app.services.alpha_vantage import (
     fetch_company_overview,
     fetch_global_quote,
 )
+from app.tools.financial_metrics import get_financial_metrics
 
 log = logging.getLogger(__name__)
 
@@ -87,4 +88,15 @@ def run_data_agent(ticker: str) -> DataAgentReport:
             f"quote={quote is not None}, overview={overview is not None}"
         )
 
-    return DataAgentReport(ticker=normalized, quote=quote, overview=overview)
+    try:
+        metrics_dict: dict = get_financial_metrics.run(normalized)
+    except Exception as exc:
+        log.warning("data_agent: FinancialMetricsTool failed for %s: %s", normalized, exc)
+        metrics_dict = {}
+
+    return DataAgentReport(
+        ticker=normalized,
+        quote=quote,
+        overview=overview,
+        financial_metrics=metrics_dict,
+    )
