@@ -14,6 +14,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.agents import DataAgentReport
+from app.models.debate import BullCase, BearCase
 from app.models.sentiment import SentimentAgentReport
 
 
@@ -54,6 +55,10 @@ class FinalReport(BaseModel):
     one_line_summary: str
     key_strengths: list[str]
     key_risks: list[str]
+
+    # Debate (populated when debate mode is active)
+    bull_case: BullCase | None = None
+    bear_case: BearCase | None = None
 
     # Grounding so consumers can drill down without a second request
     data_snapshot: DataAgentReport
