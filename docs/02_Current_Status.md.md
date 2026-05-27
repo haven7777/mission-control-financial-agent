@@ -4,15 +4,18 @@
 # Current Status & Task Tracker
 
 ## 🎯 Current Focus
-**Phase 3 (Frontend Intelligence Layer) is now complete.** All six tasks shipped:
-1. TypeScript types + SSE stage wiring
-2. DebatePanel component
-3. DebatePanel in ResultsDashboard
-4. EvidencePanel zero-news handling
-5. Debate Agents card in LoadingSkeleton
-6. Docs update
+**Phase 4A (Supabase Integration) is in progress.**
 
-**Next Steps:** Plan and scope Phase 4 (Post-Intelligence Hardening). Potential focus: performance optimization, additional edge-case handling, deployment hardening, or new feature development per project direction.
+**Just Completed:**
+- Phase 4A Task 1: Supabase dependency + config scaffolding
+  - `supabase==2.30.0` pinned in `requirements.txt`
+  - `supabase_url`, `supabase_service_role_key`, `report_cache_ttl_hours` fields added to `Settings`
+  - `supabase_configured` property wired (returns `True` iff both URL and key are set)
+  - `.env.example` updated with Supabase section (with explanatory comments)
+  - Config verified clean: `supabase_configured: False`, `report_cache_ttl_hours: 24`
+  - Commit: `6f11c13`
+
+**Next:** Phase 4A Task 2 (Supabase client initialization + report cache service)
 
 ## 📋 Track 1: Near-Term Architecture Upgrades (Current Task)
 
