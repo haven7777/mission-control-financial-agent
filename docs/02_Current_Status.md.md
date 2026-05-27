@@ -204,6 +204,19 @@ We are pivoting to upgrade the existing codebase to support the foundation of Tr
   * SSE stream emits `sentiment_unavailable` instead of `stream_error` when no news is found.
   * `_format_sentiment` in Manager Agent handles zero-news with fundamentals-only prompt.
 
+### Phase 3: Frontend Dashboard Enhancements ⬜ [IN PROGRESS]
+* [x] **Task 1:** Placeholder for future task.
+* [x] **Task 2 — DebatePanel Component:** 
+  * `frontend/src/components/dashboard/debate-panel.tsx` created.
+  * Renders `BullCase` + `BearCase` side-by-side (1-col mobile, 2-col desktop).
+  * Bull side: green/success theme with TrendingUp icon, `+` bullet glyphs.
+  * Bear side: red/destructive theme with TrendingDown icon, `−` bullet glyphs.
+  * Thesis quoted in italics, key_arguments mapped to styled list items.
+  * Types imported from `@/lib/api` (available since Phase 2 completion).
+  * Build verified clean (Turbopack 7.0s, TypeScript 3.7s, 2 static routes).
+  * Commit: `58e2a35` (`feat(frontend): add DebatePanel component — Bull vs. Bear two-column layout`).
+* [ ] **Task 3:** Placeholder for future task.
+
 ### 🔴 Follow-up Items from History
 * **Security:** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
 * **Optional future work:** Playwright E2E tests for the new Mission Control UI (existing tests cover the old 4-card layout); production deployment config (Docker, env vars, CORS origins).
