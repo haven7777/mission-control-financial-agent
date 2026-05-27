@@ -5,6 +5,7 @@ import { DashboardHeader } from "@/components/dashboard/header"
 import { AgentTerminal, type AgentEvent } from "@/components/dashboard/agent-terminal"
 import { SynthesisConsole } from "@/components/dashboard/synthesis-console"
 import { EvidencePanel } from "@/components/dashboard/evidence-panel"
+import { DebatePanel } from "@/components/dashboard/debate-panel"
 import {
   Sheet,
   SheetContent,
@@ -69,6 +70,19 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
               <SynthesisConsole report={report} confidence={confidence} />
             </div>
           </section>
+
+          {/* AI Debate: Bull vs. Bear */}
+          {report.bull_case && report.bear_case && (
+            <section>
+              <div className="p-8 rounded-2xl border border-border/30 bg-card/80">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="w-3 h-3 rounded-full bg-warning" />
+                  <h2 className="text-xl font-semibold">AI Debate: Bull vs. Bear</h2>
+                </div>
+                <DebatePanel bull_case={report.bull_case} bear_case={report.bear_case} />
+              </div>
+            </section>
+          )}
 
           {/* Supporting Data: Market & News */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
