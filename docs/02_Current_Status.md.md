@@ -190,6 +190,20 @@ We are pivoting to upgrade the existing codebase to support the foundation of Tr
 | Task 3 | SSE streaming with Critic debate events | ✅ Done |
 | Task 4 | Mission Control frontend UI (v0 components wired to real SSE data) | ✅ Done |
 
+### Phase 2: The Analytical Brain ✅ [COMPLETE]
+* [x] **AI Debate Mode (Bull vs. Bear):**
+  * `BullAgent` (`agents/bull_agent.py`) + `BearAgent` (`agents/bear_agent.py`) run concurrently after Data+Sentiment.
+  * `BullCase` / `BearCase` models (`models/debate.py`) — structured typed outputs.
+  * `FinalReport` now includes `bull_case` / `bear_case` fields.
+  * `_debate_node` inserted into LangGraph pipeline between data+sentiment and manager.
+  * Manager Agent `SYSTEM_PROMPT` and `user_payload` updated to synthesise both sides of the debate.
+  * SSE stream emits `debating` + `debate_complete` (or `debate_skipped` on failure) events.
+* [x] **Zero-News Handling:**
+  * `SentimentAgentReport.is_zero_news` sentinel prevents `NoArticlesFoundError` from crashing the pipeline.
+  * `_sentiment_node` (pipeline.py) and `_run_sentiment` (pipeline_stream.py) catch `NoArticlesFoundError` and produce a zero-news report.
+  * SSE stream emits `sentiment_unavailable` instead of `stream_error` when no news is found.
+  * `_format_sentiment` in Manager Agent handles zero-news with fundamentals-only prompt.
+
 ### 🔴 Follow-up Items from History
 * **Security:** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
 * **Optional future work:** Playwright E2E tests for the new Mission Control UI (existing tests cover the old 4-card layout); production deployment config (Docker, env vars, CORS origins).
