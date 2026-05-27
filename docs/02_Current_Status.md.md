@@ -262,6 +262,17 @@
   * `docs/02_Current_Status.md.md` updated to reflect Phase 3 completion.
   * Commit: `docs: mark Phase 3 Frontend Intelligence Layer complete`.
 
+### Phase 4A: Supabase Report Cache ✅ [COMPLETE]
+* [x] `supabase==2.30.0` dependency added; `supabase_url` / `supabase_service_role_key` / `report_cache_ttl_hours` / `supabase_configured` added to `Settings`
+* [x] `reports` table DDL in `backend/scripts/setup_supabase.sql` — `ticker`, `report_json` (JSONB), `generated_at` (timestamptz), index on (ticker, generated_at DESC)
+* [x] `ReportCache` service: `store_report()` + `get_cached_report()` — non-fatal, opt-in (no-op when Supabase not configured), `ClassifiedArticle`/`NewsArticle` nesting covered in smoke test
+* [x] Streaming pipeline (`pipeline_stream.py`): `cache_hit` short-circuit (yields `cache_hit` event + result, skips full pipeline); `cache_miss` event before full run; `store_report` after result yield
+* [x] Sync endpoint (`analyze.py`): same cache check + post-run `store_report`
+* [x] `/health` response + startup log include `supabase_cache: true/false`
+* [x] Frontend: `cache_hit` / `cache_miss` in `ProgressStage` → "Report Cache" agent, `approved` / `running` status
+* **To activate:** add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to `backend/.env`; run `backend/scripts/setup_supabase.sql` in Supabase SQL Editor
+* **Next:** Phase 4B — SEC Filings RAG (EDGAR 10-K/10-Q → pgvector embeddings → Manager Agent context)
+
 ### 🔴 Follow-up Items from History
 * **Security:** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
 * **Optional future work:** Playwright E2E tests for the new Mission Control UI (existing tests cover the old 4-card layout); production deployment config (Docker, env vars, CORS origins).
