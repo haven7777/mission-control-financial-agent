@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+from datetime import datetime, timezone
 from typing import Any, Iterator
 
 from app.agents.bear_agent import run_bear_agent
@@ -33,6 +34,7 @@ from app.models.critic import CritiqueVerdict
 from app.models.debate import BearCase, BullCase
 from app.models.manager import FinalReport
 from app.models.sentiment import Sentiment, SentimentAgentReport
+from app.services.report_cache import get_cached_report, store_report
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +50,18 @@ def _stream_error(message: str) -> dict:
 def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     """Yield progress events then the final report as SSE-ready dicts."""
     normalized = ticker.strip().upper()
+
+    # ── Cache check ───────────────────────────────────────────────────────────
+    cached = get_cached_report(normalized)
+    if cached is not None:
+        age_minutes = int(
+            (datetime.now(timezone.utc) - cached.generated_at).total_seconds() / 60
+        )
+        yield _progress("cache_hit", f"Serving cached analysis from {age_minutes}m ago")
+        yield {"event": "result", "data": cached.model_dump(mode="json")}
+        return
+
+    yield _progress("cache_miss", "No recent cache — running full analysis…")
 
     # ── Phase 1: Data + Sentiment in parallel ─────────────────────────────────
 
@@ -229,3 +243,9 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         return
 
     yield {"event": "result", "data": final.model_dump(mode="json")}
+
+    # Store in Supabase after the stream completes (non-fatal — never blocks the client)
+    try:
+        store_report(final)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("pipeline_stream: failed to cache report for %s: %s", normalized, exc)
