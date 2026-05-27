@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { TrendingUp, TrendingDown, Minus, ExternalLink } from "lucide-react"
+import { TrendingUp, TrendingDown, Minus, ExternalLink, Newspaper } from "lucide-react"
 import type { DataAgentReport, SentimentAgentReport } from "@/lib/api"
 
 // ---------- formatting helpers ----------
@@ -108,9 +108,18 @@ export function EvidencePanel({ data, sentiment, showOnly }: EvidencePanelProps)
     return (
       <ScrollArea className="h-full">
         <div className="space-y-4">
-          {newsItems.map((item, i) => (
-            <NewsCard key={i} item={item} getSentimentColor={getSentimentColor} getSentimentIcon={getSentimentIcon} />
-          ))}
+          {sentiment.is_zero_news ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4 text-foreground/50">
+              <Newspaper className="w-10 h-10 opacity-40" />
+              <p className="text-sm text-center max-w-xs">
+                No news articles were found for this ticker. Sentiment analysis was skipped — the report is based on fundamentals only.
+              </p>
+            </div>
+          ) : (
+            newsItems.map((item, i) => (
+              <NewsCard key={i} item={item} getSentimentColor={getSentimentColor} getSentimentIcon={getSentimentIcon} />
+            ))
+          )}
         </div>
       </ScrollArea>
     )
@@ -148,9 +157,18 @@ export function EvidencePanel({ data, sentiment, showOnly }: EvidencePanelProps)
         </div>
         <ScrollArea className="flex-1 p-5">
           <div className="space-y-4">
-            {newsItems.map((item, i) => (
-              <NewsCard key={i} item={item} getSentimentColor={getSentimentColor} getSentimentIcon={getSentimentIcon} />
-            ))}
+            {sentiment.is_zero_news ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-4 text-foreground/50">
+                <Newspaper className="w-10 h-10 opacity-40" />
+                <p className="text-sm text-center max-w-xs">
+                  No news articles were found for this ticker. Sentiment analysis was skipped — the report is based on fundamentals only.
+                </p>
+              </div>
+            ) : (
+              newsItems.map((item, i) => (
+                <NewsCard key={i} item={item} getSentimentColor={getSentimentColor} getSentimentIcon={getSentimentIcon} />
+              ))
+            )}
           </div>
         </ScrollArea>
       </div>
