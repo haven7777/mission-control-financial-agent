@@ -22,12 +22,15 @@ import queue
 import threading
 from typing import Any, Iterator
 
+from app.agents.bear_agent import run_bear_agent
+from app.agents.bull_agent import run_bull_agent
 from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
 from app.agents.manager_agent import run_manager_agent
 from app.agents.sentiment_agent import NoArticlesFoundError, run_sentiment_agent
 from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueVerdict
+from app.models.debate import BearCase, BullCase
 from app.models.manager import FinalReport
 from app.models.sentiment import Sentiment, SentimentAgentReport
 
@@ -117,6 +120,51 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     data_thread.join()
     sentiment_thread.join()
 
+    # ── Phase 1.5: Bull vs. Bear debate (parallel) ────────────────────────────
+    yield _progress("debating", "Bull analyst vs. Bear analyst debating the stock…")
+
+    debate_q: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    def _run_bull_debate() -> None:
+        try:
+            debate_q.put(("bull_ok", run_bull_agent(data_report, sentiment_report)))  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001
+            debate_q.put(("bull_err", exc))
+
+    def _run_bear_debate() -> None:
+        try:
+            debate_q.put(("bear_ok", run_bear_agent(data_report, sentiment_report)))  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001
+            debate_q.put(("bear_err", exc))
+
+    bull_t = threading.Thread(target=_run_bull_debate, daemon=True)
+    bear_t = threading.Thread(target=_run_bear_debate, daemon=True)
+    bull_t.start()
+    bear_t.start()
+
+    bull_case: BullCase | None = None
+    bear_case: BearCase | None = None
+
+    for _ in range(2):
+        tag, value = debate_q.get()
+        if tag == "bull_ok":
+            bull_case = value
+        elif tag == "bear_ok":
+            bear_case = value
+        else:
+            log.warning("pipeline_stream: %s failed: %s", tag, value)
+
+    bull_t.join()
+    bear_t.join()
+
+    if bull_case and bear_case:
+        yield _progress("debate_complete", "Bull vs. Bear debate complete — synthesizing final view…")
+    else:
+        yield _progress(
+            "debate_skipped",
+            "Debate agents unavailable — proceeding with direct synthesis",
+        )
+
     # ── Phase 2: Manager → Critic reflection loop ─────────────────────────────
     # Runs at most MAX_REVISION_CYCLES times. On each iteration:
     #   manager synthesises → critic audits → approved → done
@@ -134,9 +182,11 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
 
         try:
             final = run_manager_agent(
-                data_report,  # type: ignore[arg-type]
+                data_report,       # type: ignore[arg-type]
                 sentiment_report,  # type: ignore[arg-type]
                 revision_instruction,
+                bull_case=bull_case,
+                bear_case=bear_case,
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("pipeline_stream: manager failed (round %d): %s", revision_round, exc)
