@@ -153,6 +153,8 @@ export function fetchAnalysis(ticker: string): Promise<FinalReport> {
 // ---------------------------------------------------------------------------
 
 export type ProgressStage =
+  | "cache_hit"
+  | "cache_miss"
   | "started"
   | "data_complete"
   | "sentiment_complete"
