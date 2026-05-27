@@ -1,6 +1,32 @@
 # Current Status & Task Tracker
 
-## 🟢 Done
+```
+# Current Status & Task Tracker
+
+## 🎯 Current Focus (Track 1 Refactoring)
+We are pivoting to upgrade the existing codebase to support the foundation of Track 1 (Refactoring for Specialization). We are shifting our LLM strategy to use `gpt-4o-mini` via the OpenAI API for fast, reliable, and cost-effective development.
+
+## 📋 Track 1: Near-Term Architecture Upgrades (Current Task)
+
+### Phase 1: Foundation & Specialization ✅ [COMPLETE]
+* [x] **Data Ingestion:** `FinancialMetricsTool` (`backend/app/tools/financial_metrics.py`) — yfinance, returns P/E, Market Cap, 52W High/Low, next earnings date, EPS, Beta as structured dict.
+* [x] **Tool Segregation:**
+  * `FinancialMetricsTool` (`backend/app/tools/financial_metrics.py`): Strictly for hard numbers and timelines.
+  * `NewsSentimentTool` (`backend/app/tools/news_sentiment.py`): Strictly for market narrative and sentiment (narrative-focused Tavily query).
+* [x] **Agent Scoping:** DataAgent exclusively calls `FinancialMetricsTool`; SentimentAgent exclusively calls `NewsSentimentTool`. LangChain `@tool` decorator enforces the interface contract.
+* [x] **State Management:** `_PipelineState` now carries `financial_metrics: dict` and `news_sentiment: dict` alongside existing typed model fields. Both propagate from their respective nodes into the graph state and surface in `FinalReport.data_snapshot` / `FinalReport.sentiment_snapshot`.
+* [x] **Model Setup:** `ChatOpenAI(model="gpt-4o-mini")` — already configured via `Settings.openai_model` default. Confirmed in SSE stream result: `"model_used": "gpt-4o-mini"`.
+* **SSE streaming verified intact:** Full 9-event sequence (`started` → `data_complete` → `sentiment_complete` → `synthesizing` → `critiquing` → `revising` → `synthesizing` → `critiquing` → `approved` → `result`) with no `stream_error`.
+
+### Phase 2: The Analytical Brain ⬜ [BACKLOG]
+* [ ] **AI Debate Mode (Bull vs. Bear):** Introduction of conflicting agents and a Manager synthesis node.
+* [ ] **Zero-News Handling:** Graceful degradation when the sentiment agent returns no recent data.
+
+---
+
+## 🗄️ Completed / History (v3.0 and older)
+
+### 🟢 Done
 * Project folder structure initialized.
 * Git repository initialized.
 * Obsidian vault established for documentation.
@@ -156,8 +182,7 @@
   * Error state falls through to `SearchHome` with a fixed dismissible banner.
   * `npm run build` clean (5.6s Turbopack, 3.3s TypeScript).
 
-## 🟢 All Tasks Complete
-
+### 🟢 All Tasks Complete
 | Task | Description | Status |
 |---|---|---|
 | Task 1 | Critic Agent (models + agent) | ✅ Done |
@@ -165,7 +190,7 @@
 | Task 3 | SSE streaming with Critic debate events | ✅ Done |
 | Task 4 | Mission Control frontend UI (v0 components wired to real SSE data) | ✅ Done |
 
-## 🔴 To Do (Next Tasks)
-* No pending tasks. System is feature-complete for v3.0.
-* **Follow-up (security):** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
+### 🔴 Follow-up Items from History
+* **Security:** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
 * **Optional future work:** Playwright E2E tests for the new Mission Control UI (existing tests cover the old 4-card layout); production deployment config (Docker, env vars, CORS origins).
+```
