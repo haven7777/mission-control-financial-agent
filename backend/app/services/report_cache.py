@@ -68,5 +68,5 @@ def get_cached_report(ticker: str) -> FinalReport | None:
             return None
         return FinalReport.model_validate(result.data[0]["report_json"])
     except Exception as exc:  # noqa: BLE001
-        log.warning("report_cache: get failed for %s: %s", ticker, exc)
+        log.info("report_cache: get failed for %s: %s", ticker, exc)
         return None

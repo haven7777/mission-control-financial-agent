@@ -20,7 +20,13 @@ from decimal import Decimal
 from app.models.agents import DataAgentReport
 from app.models.financial import CompanyOverview, StockQuote
 from app.models.manager import FinalReport, OverallView
-from app.models.sentiment import Sentiment, SentimentAgentReport
+from app.models.news import NewsArticle
+from app.models.sentiment import (
+    ArticleSentiment,
+    ClassifiedArticle,
+    Sentiment,
+    SentimentAgentReport,
+)
 from app.services.report_cache import get_cached_report, store_report
 from app.services.supabase_client import get_supabase_client
 
@@ -57,15 +63,28 @@ def _make_test_report() -> FinalReport:
         overview=overview,
         fetched_at=datetime.now(timezone.utc),
     )
+    test_article = NewsArticle(
+        title="Test article for cache smoke test",
+        url="https://example.com/test",
+        content="This is a test article.",
+        score=0.8,
+        published_date=None,
+    )
+    classified_article = ClassifiedArticle(
+        article=test_article,
+        sentiment=Sentiment.NEUTRAL,
+        confidence=0.75,
+        reason="Test classification reason.",
+    )
     sentiment_report = SentimentAgentReport(
         ticker=_TICKER,
         query=f"{_TICKER} stock analyst outlook",
-        articles_analyzed=0,
+        articles_analyzed=1,
         overall_sentiment=Sentiment.NEUTRAL,
-        overall_confidence=0.0,
-        classified=[],
+        overall_confidence=0.75,
+        classified=[classified_article],
         fetched_at=datetime.now(timezone.utc),
-        is_zero_news=True,
+        is_zero_news=False,
     )
     return FinalReport(
         ticker=_TICKER,
@@ -108,7 +127,10 @@ def main() -> None:
     assert cached.ticker == _TICKER
     assert cached.overall_view == OverallView.NEUTRAL
     assert cached.one_line_summary == report.one_line_summary
-    print(f"   ✓ cache hit: ticker={cached.ticker}, view={cached.overall_view}\n")
+    assert cached.data_snapshot.quote.price == report.data_snapshot.quote.price, \
+        f"Decimal price round-trip failed: {cached.data_snapshot.quote.price!r} != {report.data_snapshot.quote.price!r}"
+    print(f"   ✓ cache hit: ticker={cached.ticker}, view={cached.overall_view}")
+    print(f"   ✓ Decimal round-trip: price={cached.data_snapshot.quote.price}\n")
 
     _cleanup()
 
