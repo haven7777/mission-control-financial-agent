@@ -3,13 +3,14 @@
 Graph shape:
 
     START ──> data ─────┐
-        └──> sentiment ─┴──> manager ──> critic ──┐
-                                  ↑                │ needs_revision
-                                  └────────────────┘ (≤ MAX_REVISION_CYCLES)
-                                                   │
-                                                  END  (approved OR cycles exhausted)
+        └──> sentiment ─┴──> debate ──> manager ──> critic ──┐
+                                                  ↑           │ needs_revision
+                                                  └───────────┘ (≤ MAX_REVISION_CYCLES)
+                                                              │
+                                                             END  (approved OR cycles exhausted)
 
-`data` and `sentiment` execute concurrently; `manager` waits for both.
+`data` and `sentiment` execute concurrently; both feed into `debate`.
+`debate` runs Bull and Bear agents concurrently, then feeds into `manager`.
 After `manager` drafts a synthesis, `critic` audits it. If the verdict is
 `needs_revision` and the cycle cap has not been reached, the pipeline routes
 back to `manager` with the Critic's revision instruction prepended to the
@@ -21,16 +22,21 @@ Public entry point: `run_full_analysis(ticker) -> FinalReport`.
 from __future__ import annotations
 
 import logging
+import queue
+import threading
 
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, ConfigDict
 
+from app.agents.bear_agent import run_bear_agent
+from app.agents.bull_agent import run_bull_agent
 from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
 from app.agents.manager_agent import run_manager_agent
 from app.agents.sentiment_agent import NoArticlesFoundError, run_sentiment_agent
 from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueReport, CritiqueVerdict
+from app.models.debate import BearCase, BullCase
 from app.models.manager import FinalReport
 from app.models.sentiment import Sentiment, SentimentAgentReport
 
@@ -45,6 +51,8 @@ class _PipelineState(BaseModel):
     sentiment: SentimentAgentReport | None = None
     financial_metrics: dict = {}
     news_sentiment: dict = {}
+    bull_case: BullCase | None = None
+    bear_case: BearCase | None = None
     final: FinalReport | None = None
     critique: CritiqueReport | None = None
     revision_round: int = 1
@@ -77,6 +85,44 @@ def _sentiment_node(state: _PipelineState) -> dict:
     return {"sentiment": report, "news_sentiment": report.news_sentiment}
 
 
+def _debate_node(state: _PipelineState) -> dict:
+    """Run Bull and Bear agents concurrently; failures are non-fatal (logged, None returned)."""
+    log.info("pipeline: debate node for %s", state.ticker)
+    q: queue.Queue = queue.Queue()
+
+    def _run_bull() -> None:
+        try:
+            q.put(("bull_ok", run_bull_agent(state.data, state.sentiment)))
+        except Exception as exc:  # noqa: BLE001
+            q.put(("bull_err", exc))
+
+    def _run_bear() -> None:
+        try:
+            q.put(("bear_ok", run_bear_agent(state.data, state.sentiment)))
+        except Exception as exc:  # noqa: BLE001
+            q.put(("bear_err", exc))
+
+    bull_t = threading.Thread(target=_run_bull, daemon=True)
+    bear_t = threading.Thread(target=_run_bear, daemon=True)
+    bull_t.start()
+    bear_t.start()
+    bull_t.join()
+    bear_t.join()
+
+    bull_case: BullCase | None = None
+    bear_case: BearCase | None = None
+    for _ in range(2):
+        tag, value = q.get()
+        if tag == "bull_ok":
+            bull_case = value
+        elif tag == "bear_ok":
+            bear_case = value
+        else:
+            log.warning("pipeline: %s failed: %s", tag, value)
+
+    return {"bull_case": bull_case, "bear_case": bear_case}
+
+
 def _manager_node(state: _PipelineState) -> dict:
     if state.data is None or state.sentiment is None:
         raise RuntimeError(
@@ -88,7 +134,13 @@ def _manager_node(state: _PipelineState) -> dict:
         if state.critique is not None else None
     )
     log.info("pipeline: manager node for %s (round %d)", state.ticker, state.revision_round)
-    return {"final": run_manager_agent(state.data, state.sentiment, revision_instruction)}
+    return {"final": run_manager_agent(
+        state.data,
+        state.sentiment,
+        revision_instruction,
+        bull_case=state.bull_case,
+        bear_case=state.bear_case,
+    )}
 
 
 def _critic_node(state: _PipelineState) -> dict:
@@ -139,14 +191,18 @@ def _build_graph():
 
     graph.add_node("data", _data_node)
     graph.add_node("sentiment", _sentiment_node)
+    graph.add_node("debate", _debate_node)
     graph.add_node("manager", _manager_node)
     graph.add_node("critic", _critic_node)
 
-    # data + sentiment run in parallel, both feed into manager
+    # data and sentiment run in parallel; both feed into debate
     graph.add_edge(START, "data")
     graph.add_edge(START, "sentiment")
-    graph.add_edge("data", "manager")
-    graph.add_edge("sentiment", "manager")
+    graph.add_edge("data", "debate")
+    graph.add_edge("sentiment", "debate")
+
+    # debate feeds into manager
+    graph.add_edge("debate", "manager")
 
     # manager always goes to critic for review
     graph.add_edge("manager", "critic")
