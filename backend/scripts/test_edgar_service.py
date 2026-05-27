@@ -5,7 +5,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.services.edgar import get_latest_filing_text, FilingNotFoundError
 
 def test_edgar():
-    text, form_type, filing_date = get_latest_filing_text("AAPL")
+    result = get_latest_filing_text("AAPL")
+    assert isinstance(result, tuple) and len(result) == 3
+    text, form_type, filing_date = result
     print(f"form_type: {form_type}")
     print(f"filing_date: {filing_date}")
     print(f"text length: {len(text):,} chars")
@@ -16,7 +18,7 @@ def test_edgar():
     print("✓ EDGAR fetch OK")
 
     try:
-        get_latest_filing_text("ZZZNOTREAL")
+        get_latest_filing_text("ZZZZZZZZ")
         assert False, "should have raised FilingNotFoundError"
     except FilingNotFoundError as e:
         print(f"✓ unknown ticker raised FilingNotFoundError: {e}")
