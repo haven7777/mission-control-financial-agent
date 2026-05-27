@@ -3,8 +3,16 @@
 ```
 # Current Status & Task Tracker
 
-## 🎯 Current Focus (Track 1 Refactoring)
-We are pivoting to upgrade the existing codebase to support the foundation of Track 1 (Refactoring for Specialization). We are shifting our LLM strategy to use `gpt-4o-mini` via the OpenAI API for fast, reliable, and cost-effective development.
+## 🎯 Current Focus
+**Phase 3 (Frontend Intelligence Layer) is now complete.** All six tasks shipped:
+1. TypeScript types + SSE stage wiring
+2. DebatePanel component
+3. DebatePanel in ResultsDashboard
+4. EvidencePanel zero-news handling
+5. Debate Agents card in LoadingSkeleton
+6. Docs update
+
+**Next Steps:** Plan and scope Phase 4 (Post-Intelligence Hardening). Potential focus: performance optimization, additional edge-case handling, deployment hardening, or new feature development per project direction.
 
 ## 📋 Track 1: Near-Term Architecture Upgrades (Current Task)
 
@@ -204,18 +212,44 @@ We are pivoting to upgrade the existing codebase to support the foundation of Tr
   * SSE stream emits `sentiment_unavailable` instead of `stream_error` when no news is found.
   * `_format_sentiment` in Manager Agent handles zero-news with fundamentals-only prompt.
 
-### Phase 3: Frontend Dashboard Enhancements ⬜ [IN PROGRESS]
-* [x] **Task 1:** Placeholder for future task.
+### Phase 3: Frontend Intelligence Layer ✅ [COMPLETE]
+* [x] **Task 1 — TypeScript types + SSE stage wiring:**
+  * `BullCase` / `BearCase` types added to `frontend/src/lib/api.ts`.
+  * `FinalReport` gained `bull_case` / `bear_case` fields.
+  * `SentimentAgentReport` gained `is_zero_news` sentinel.
+  * `ProgressStage` union expanded: `sentiment_unavailable`, `debating`, `debate_complete`, `debate_skipped`.
+  * `STAGE_AGENT` and `STAGE_STATUS` Records updated exhaustively in `page.tsx`.
+  * Debate Agents color (`--color-agent-debate` / `--agent-debate`) added to `globals.css`.
+
 * [x] **Task 2 — DebatePanel Component:** 
   * `frontend/src/components/dashboard/debate-panel.tsx` created.
   * Renders `BullCase` + `BearCase` side-by-side (1-col mobile, 2-col desktop).
   * Bull side: green/success theme with TrendingUp icon, `+` bullet glyphs.
   * Bear side: red/destructive theme with TrendingDown icon, `−` bullet glyphs.
   * Thesis quoted in italics, key_arguments mapped to styled list items.
-  * Types imported from `@/lib/api` (available since Phase 2 completion).
+  * Types imported from `@/lib/api`.
   * Build verified clean (Turbopack 7.0s, TypeScript 3.7s, 2 static routes).
   * Commit: `58e2a35` (`feat(frontend): add DebatePanel component — Bull vs. Bear two-column layout`).
-* [ ] **Task 3:** Placeholder for future task.
+
+* [x] **Task 3 — DebatePanel in ResultsDashboard:**
+  * `results-dashboard.tsx` renders `DebatePanel` between SynthesisConsole and EvidencePanel.
+  * Conditional on `report.bull_case && report.bear_case` (only shows if debate ran).
+  * Fully integrated into the three-section layout.
+
+* [x] **Task 4 — EvidencePanel zero-news handling:**
+  * `evidence-panel.tsx` shows `ZeroNewsEmptyState` (Newspaper icon + message) when `sentiment.is_zero_news === true`.
+  * Extracted as private component.
+  * Graceful fallback for queries with no recent news.
+
+* [x] **Task 5 — Debate Agents card in LoadingSkeleton:**
+  * `loading-skeleton.tsx` now has 5-card layout (added Debate Agents card).
+  * Card: purple `text-agent-debate` color, Scale icon, "Debate Agents" label.
+  * Grid expanded from `lg:grid-cols-4` → `lg:grid-cols-5`.
+  * CSS tokens `--color-agent-debate` / `--agent-debate` added to `globals.css`.
+
+* [x] **Task 6 — Docs update:**
+  * `docs/02_Current_Status.md.md` updated to reflect Phase 3 completion.
+  * Commit: `docs: mark Phase 3 Frontend Intelligence Layer complete`.
 
 ### 🔴 Follow-up Items from History
 * **Security:** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
