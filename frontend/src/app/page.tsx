@@ -102,7 +102,7 @@ const STAGE_STATUS: Record<ProgressStage, AgentEventStatus> = {
   sentiment_unavailable: "done",
   debating:              "running",
   debate_complete:       "done",
-  debate_skipped:        "conflict",
+  debate_skipped:        "done",
   synthesizing:          "running",
   critiquing:            "running",
   revising:              "conflict",

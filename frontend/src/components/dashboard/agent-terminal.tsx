@@ -54,6 +54,7 @@ export function AgentTerminal({ events }: AgentTerminalProps) {
     if (agent.includes("Sentiment")) return "text-agent-sentiment"
     if (agent.includes("Manager"))   return "text-agent-manager"
     if (agent.includes("Critic"))    return "text-agent-critic"
+    if (agent.includes("Debate"))    return "text-primary"
     return "text-foreground"
   }
 
