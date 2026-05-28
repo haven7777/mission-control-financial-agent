@@ -182,6 +182,18 @@ export function fetchAnalysis(ticker: string): Promise<FinalReport> {
   return _getJson<FinalReport>(`/api/analyze/${encodeURIComponent(trimmed)}`);
 }
 
+/** Validate a Master Code against the backend. Returns true if valid. */
+export async function validateMasterCode(code: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/ping`, {
+      headers: { "X-Master-Code": code },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // SSE streaming
 // ---------------------------------------------------------------------------
@@ -226,6 +238,7 @@ export type StreamEvent =
 export function streamAnalysis(
   ticker: string,
   onEvent: (event: StreamEvent) => void,
+  masterCode?: string | null,
 ): () => void {
   const trimmed = ticker.trim();
   if (!trimmed) {
@@ -233,7 +246,10 @@ export function streamAnalysis(
     return () => {};
   }
 
-  const url = `${API_BASE_URL}/api/analyze/${encodeURIComponent(trimmed)}/stream`;
+  const params = new URLSearchParams();
+  if (masterCode) params.set("master_code", masterCode);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const url = `${API_BASE_URL}/api/analyze/${encodeURIComponent(trimmed)}/stream${query}`;
   const source = new EventSource(url);
 
   source.addEventListener("progress", (e: Event) => {

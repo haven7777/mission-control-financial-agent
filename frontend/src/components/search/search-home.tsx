@@ -5,8 +5,12 @@ import { Search, TrendingUp, Cpu, Rocket, Zap, ChevronRight, Sparkles } from "lu
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
+export type ResearchMode = "fast" | "deep";
+
 interface SearchHomeProps {
-  onSearch: (query: string) => void
+  onSearch: (query: string) => void;
+  mode: ResearchMode;
+  onModeChange: (mode: ResearchMode) => void;
 }
 
 const popularStocks = [
@@ -53,7 +57,7 @@ const categories = [
   },
 ]
 
-export function SearchHome({ onSearch }: SearchHomeProps) {
+export function SearchHome({ onSearch, mode, onModeChange }: SearchHomeProps) {
   const [query, setQuery] = useState("")
   const [isFocused, setIsFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -103,6 +107,37 @@ export function SearchHome({ onSearch }: SearchHomeProps) {
         <p className="text-muted-foreground text-lg max-w-md mx-auto text-pretty">
           AI-powered financial analysis. Enter a stock symbol or explore market sectors.
         </p>
+      </div>
+
+      {/* Fast / Deep Research Mode Toggle */}
+      <div className="flex items-center gap-1 mb-8 p-1 rounded-xl bg-secondary/50 border border-border">
+        <button
+          onClick={() => onModeChange("fast")}
+          className={cn(
+            "flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all",
+            mode === "fast"
+              ? "bg-card text-foreground shadow-sm border border-border"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Zap className="w-4 h-4" />
+          Fast
+        </button>
+        <button
+          onClick={() => onModeChange("deep")}
+          className={cn(
+            "flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all",
+            mode === "deep"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Sparkles className="w-4 h-4" />
+          Deep Research
+          {mode === "deep" && (
+            <span className="text-xs opacity-75 font-mono">PRO</span>
+          )}
+        </button>
       </div>
 
       {/* Search Bar */}
