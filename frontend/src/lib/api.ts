@@ -87,6 +87,19 @@ export type BearCase = {
   key_arguments: string[];
 };
 
+export interface FilingChunk {
+  section: string;
+  content: string;
+  similarity: number;
+}
+
+export interface FilingsContext {
+  ticker: string;
+  form_type: string;
+  chunks: FilingChunk[];
+  is_empty: boolean;
+}
+
 export type FinalReport = {
   ticker: string;
   company_name: string;
@@ -96,6 +109,7 @@ export type FinalReport = {
   key_risks: string[];
   bull_case: BullCase | null;
   bear_case: BearCase | null;
+  filings_context: FilingsContext | null;
   data_snapshot: DataAgentReport;
   sentiment_snapshot: SentimentAgentReport;
   model_used: string;
@@ -156,6 +170,9 @@ export type ProgressStage =
   | "cache_hit"
   | "cache_miss"
   | "started"
+  | "filings_fetching"
+  | "filings_complete"
+  | "filings_unavailable"
   | "data_complete"
   | "sentiment_complete"
   | "sentiment_unavailable"

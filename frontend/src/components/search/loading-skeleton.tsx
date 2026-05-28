@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { Database, BarChart3, Users, AlertTriangle, CheckCircle2, Scale } from "lucide-react"
+import { Database, BarChart3, Users, AlertTriangle, CheckCircle2, Scale, FileText } from "lucide-react"
 
 interface LoadingSkeletonProps {
   query: string
@@ -76,6 +76,19 @@ const agents = [
       "Reaching debate consensus...",
     ],
   },
+  {
+    id: "filings",
+    name: "SEC Filings",
+    icon: FileText,
+    color: "text-agent-filings",
+    bgColor: "bg-agent-filings",
+    tasks: [
+      "Locating latest 10-K on EDGAR...",
+      "Extracting Risk Factors section...",
+      "Extracting MD&A section...",
+      "Embedding and indexing filing chunks...",
+    ],
+  },
 ]
 
 const ALL_COMPLETE = {
@@ -84,6 +97,7 @@ const ALL_COMPLETE = {
   manager:   { taskIndex: 3, complete: true },
   critic:    { taskIndex: 3, complete: true },
   debate:    { taskIndex: 3, complete: true },
+  filings:   { taskIndex: 3, complete: true },
 }
 
 export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProps) {
@@ -95,6 +109,7 @@ export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProp
     manager: { taskIndex: 0, complete: false },
     critic: { taskIndex: 0, complete: false },
     debate: { taskIndex: 0, complete: false },
+    filings: { taskIndex: 0, complete: false },
   })
 
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -186,7 +201,7 @@ export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProp
       </div>
 
       {/* Agent Cards */}
-      <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="w-full max-w-6xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         {agents.map((agent) => {
           const Icon = agent.icon
           const state = agentStates[agent.id]
