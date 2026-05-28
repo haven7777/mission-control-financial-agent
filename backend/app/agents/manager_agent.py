@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.models.agents import DataAgentReport
 from app.models.debate import BullCase, BearCase
 from app.models.filings import FilingsContext
+from app.models.transcript import TranscriptContext
 from app.models.manager import FinalReport, ManagerSynthesis
 from app.models.sentiment import SentimentAgentReport
 
@@ -36,7 +37,10 @@ SYSTEM_PROMPT = (
     "  (3) Optionally: a structured bull/bear debate from specialist analysts.\n"
     "  (4) Optionally: verbatim excerpts from the company's latest SEC 10-K filing "
     "(Risk Factors and MD&A). When present, treat these as primary sources — "
-    "quote or paraphrase them directly in your strengths and risks.\n\n"
+    "quote or paraphrase them directly in your strengths and risks.\n"
+    "  (5) Optionally: earnings call transcript analysis including executive tone, "
+    "forward-looking statements, and analyst questions management appeared to dodge. "
+    "When present, factor the tone and any evasive responses into your risk assessment.\n\n"
     "Synthesize everything into a balanced, investor-facing brief. Respond as "
     "a JSON object matching this schema:\n"
     '  {"overall_view": "positive"|"negative"|"mixed"|"neutral",\n'
@@ -72,6 +76,7 @@ class _ManagerAgentState(BaseModel):
     bull_case: BullCase | None = None
     bear_case: BearCase | None = None
     filings_context: FilingsContext | None = None
+    transcript_context: TranscriptContext | None = None
 
 
 # --- Prompt formatting -------------------------------------------------------
@@ -141,6 +146,31 @@ def _format_filings(ctx: FilingsContext) -> str:
     return "\n".join(lines)
 
 
+def _format_transcript(ctx: TranscriptContext) -> str:
+    if ctx.is_empty:
+        return ""
+    lines = [
+        f"EARNINGS CALL TRANSCRIPT (Q{ctx.quarter} {ctx.year}"
+        + (f" — {ctx.date[:10]}" if ctx.date else "")
+        + "):",
+        f"Executive Tone: {ctx.executive_tone.title()}",
+        f"Management Sentiment: {ctx.management_sentiment.title()}",
+    ]
+    if ctx.key_forward_statements:
+        lines.append("\nKey Forward-Looking Statements:")
+        for stmt in ctx.key_forward_statements:
+            lines.append(f"  • {stmt}")
+    if ctx.dodged_questions:
+        lines.append(
+            f"\nAnalyst Questions With Potentially Evasive Responses ({len(ctx.dodged_questions)}):"
+        )
+        for i, dq in enumerate(ctx.dodged_questions, 1):
+            lines.append(f"  {i}. Q: {dq.analyst_question}")
+            lines.append(f'     A: "{dq.management_response}"')
+            lines.append(f"     Why evasive: {dq.evasion_signal}")
+    return "\n".join(lines)
+
+
 # --- Nodes -------------------------------------------------------------------
 
 def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
@@ -184,6 +214,11 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
         if filings_block:
             user_payload += f"\n\n{filings_block}"
 
+    if state.transcript_context and not state.transcript_context.is_empty:
+        transcript_block = _format_transcript(state.transcript_context)
+        if transcript_block:
+            user_payload += f"\n\n{transcript_block}"
+
     if state.revision_instruction:
         user_payload = (
             f"REVISION REQUIRED — your previous synthesis was rejected by the auditor.\n"
@@ -221,6 +256,7 @@ def run_manager_agent(
     bull_case: BullCase | None = None,
     bear_case: BearCase | None = None,
     filings_context: FilingsContext | None = None,
+    transcript_context: TranscriptContext | None = None,
 ) -> FinalReport:
     """Run the synthesis graph and return a `FinalReport`.
 
@@ -241,6 +277,7 @@ def run_manager_agent(
         "bull_case": bull_case,
         "bear_case": bear_case,
         "filings_context": filings_context,
+        "transcript_context": transcript_context,
     })
     synthesis: ManagerSynthesis = (
         result["synthesis"] if isinstance(result, dict) else result.synthesis
@@ -261,6 +298,7 @@ def run_manager_agent(
         bull_case=bull_case,
         bear_case=bear_case,
         filings_context=filings_context,
+        transcript_context=transcript_context,
     )
 
 
