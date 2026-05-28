@@ -4,9 +4,31 @@
 # Current Status & Task Tracker
 
 ## 🎯 Current Focus
-**Phase 4B (SEC Filings RAG) is COMPLETE. Next: Phase 4C — Earnings Call Transcript analysis (or SaaS wrapper / deployment).**
+**Phase 6 (SaaS Wrapper, Access Control & Guardrails) is COMPLETE as of 2026-05-28. App is feature-complete for beta. Next: deployment or Phase 4C Tasks 2–4 (TranscriptAgent LangGraph node + pipeline wiring + frontend).**
 
-**Just Completed:**
+**Just Completed (2026-05-28) — Phase 6: SaaS Wrapper, Access Control & Guardrails:**
+- **Task 1 (Backend Auth):** `master_codes` Supabase table (DDL + index + RLS policy blocking anon/authenticated roles). `backend/app/services/master_code_auth.py` — `require_master_code` FastAPI dependency with 5-min in-memory TTL cache (thread-safe), reads from `X-Master-Code` header (fetch) or `?master_code=` query param (EventSource). `backend/app/routers/auth.py` — `GET /api/auth/ping` (rate-limited 10/min). SSE streaming endpoint gated; sync endpoint stays public. Prompt injection regex guard on both endpoints. Commits: `31307d1`, `296cf08`.
+- **Task 2 (Frontend Fast/Deep):** `frontend/src/lib/auth.ts` — localStorage helpers. `MasterCodeDialog` component — validates code via `/api/auth/ping`, persists to localStorage, resets state on re-open. Fast/Deep toggle in `SearchHome`. `page.tsx` — `mode` state, `masterCode` state, `useFastAnalysis` hook (sync endpoint, no auth, no illusion), Labor Illusion active only in Deep mode, pending-ticker pattern for deferred searches. Commits: `a420365`, `f77f746`.
+- **Task 3 (Guardrails + Localization):** Israeli market context appended to Manager Agent `SYSTEM_PROMPT` (5 factors: NIS/USD FX, capital gains tax, TASE dual-listing, tech premium valuations, IDF/geopolitical risk). Injection guard smoke test at `backend/scripts/test_injection_guard.py` (10/10 pass). Regex hardened with word boundaries and multi-word qualifier support. Commits: in Task 3 commit + `eda28b2`.
+- **⚠️ Pre-beta action required:** Rotate seed Master Code `DEEP-RESEARCH-BETA-2026` before public distribution — it is in git history. Add `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` to ensure `master_codes` table is live and authenticated.
+
+**Just Completed (2026-05-28) — Phase 5: Performance Optimization & Labor Illusion:**
+- **Task 1:** Supabase `reports` table verified live (already deployed, 3 existing rows). Smoke test created at `backend/scripts/test_report_cache.py` — round-trip INSERT + SELECT + DELETE PASS. Commit: `a1f2f66`
+- **Task 2:** Delta Refresh Engine — on cache hit, re-runs cheap agents instead of serving stale data immediately.
+  - `backend/app/agents/delta_refresh.py` created: fetches live yfinance price (DataAgent) + Tavily news since `cached.generated_at` (`days` filter); classifies delta news with LLM; reuses cached synthesis (overall_view, key_strengths/risks, bull/bear cases, filings, transcripts); returns `FinalReport(delta_refreshed=True, generated_at=cached.generated_at)`
+  - `backend/app/services/tavily.py`: added `days: int | None = None` param to `search()`
+  - `backend/app/models/manager.py`: added `delta_refreshed: bool = False` to `FinalReport`
+  - `backend/app/agents/pipeline_stream.py`: cache-hit block replaced with threaded delta refresh (25 s timeout); new SSE stages `delta_refreshing` → `delta_complete`
+  - `frontend/src/lib/api.ts`: added `delta_refreshing`/`delta_complete` to `ProgressStage`; `delta_refreshed: boolean` to `FinalReport`
+  - `frontend/src/app/page.tsx`: STAGE_AGENT/STAGE_STATUS updated for new stages
+  - Commits: `31c0299`, `ba8f70c` (fixes: preserve `generated_at`, 25 s thread timeout)
+- **Task 3:** Labor Illusion Engine — frontend enforces 30–45 s minimum loading UX regardless of backend speed.
+  - `frontend/src/hooks/use-labour-illusion.ts` created: randomized 30–45 s gate; 10 scripted institutional-grade stage messages; hard-caps timer at 50 s; late-SSE-error guard preserves held report
+  - `frontend/src/components/search/loading-skeleton.tsx`: added `illusionMessage?: string` prop; `StreamingText key={illusionMessage}` remounts on each stage change; progress ring capped at 90% until `approved`
+  - `frontend/src/app/page.tsx`: `isActive` covers `streaming|done|error-with-report`; results gate uses `revealedReport`; `handleSearch` wrapped in `useCallback`
+  - Commits: `036398b`, `6904c86` (critical fixes)
+
+**Previously Completed:**
 - Phase 4B end-to-end verification (2026-05-28)
   - Full SSE stream for AAPL confirmed all stages: `cache_miss` → `started` → `filings_fetching` → `filings_complete` (SEC 10-Q, 5 excerpts) → `data_complete` → `sentiment_complete` → `debating` → `debate_complete` → `synthesizing` → `critiquing` → `revising` → `synthesizing` → `critiquing` → `approved` → `result`
   - `result` event contains `filings_context` key with 5 `risk_factors` chunks (similarity 0.468–0.491) from AAPL Q2 2026 Form 10-Q
@@ -298,7 +320,30 @@
 * [x] Pipeline (streaming + sync): filings thread runs in parallel with data+sentiment; 3 new SSE stages
 * [x] Frontend: `filings_fetching` / `filings_complete` / `filings_unavailable` in ProgressStage; SEC Filings agent card in LoadingSkeleton
 * [x] End-to-end verified 2026-05-28: AAPL SSE stream produced all expected stages + `filings_context` with 5 risk_factors chunks (similarity 0.468–0.491) from Q2 2026 Form 10-Q; zero `stream_error` events
-* **Next:** Phase 4C — Earnings Call Transcript analysis (or SaaS wrapper / deployment)
+
+### Phase 6: SaaS Wrapper, Access Control & Guardrails ✅ [COMPLETE — 2026-05-28]
+* [x] `master_codes` Supabase table (DDL + index + RLS policy)
+* [x] `require_master_code` FastAPI dependency — header + query param, 5-min TTL cache
+* [x] `GET /api/auth/ping` rate-limited validation endpoint
+* [x] SSE endpoint gated; sync endpoint public (Fast mode)
+* [x] Prompt injection regex guard on both analyze endpoints (word boundaries, multi-qualifier)
+* [x] Frontend Fast/Deep mode toggle with `ResearchMode` type
+* [x] `MasterCodeDialog` — validate + persist code; reset state on re-open
+* [x] `useFastAnalysis` hook — sync fetch, no auth, no Labor Illusion, race-safe with cancel flag
+* [x] Israeli market context appended to Manager Agent SYSTEM_PROMPT (5 factors)
+* [x] Injection guard smoke test `backend/scripts/test_injection_guard.py` — 10/10 pass
+* **Pre-beta:** Rotate seed code `DEEP-RESEARCH-BETA-2026` (in git history); enable RLS already applied via MCP
+
+### Phase 4C: Earnings Call Transcript Analysis 🔄 [IN PROGRESS]
+* [x] **Task 1 (2026-05-28):** FMP config + transcript fetcher service — commit `9cdea2e`
+  * `fmp_api_key: str | None` + `fmp_configured` property added to `Settings` (`app/config.py`)
+  * `backend/.env.example` updated with FMP section (free tier: 250 calls/day, link to docs)
+  * `backend/app/services/transcript_fetcher.py` created: `get_latest_transcript(ticker) → RawTranscript`, `extract_qa_section(content) → str` (capped 12k chars). `TranscriptNotFoundError` / `TranscriptFetchError` typed exception hierarchy.
+  * `backend/scripts/test_transcript_fetcher.py` — smoke test; no-key path verified (raises `TranscriptNotFoundError` correctly); full live test requires `FMP_API_KEY` in `backend/.env`
+  * **To activate:** add `FMP_API_KEY=<your-key>` to `backend/.env` (get key at financialmodelingprep.com/developer/docs)
+* [ ] **Task 2:** `TranscriptAgent` LangGraph node — calls `get_latest_transcript`, runs LLM over Q&A section, produces `TranscriptAgentReport`
+* [ ] **Task 3:** Wire `TranscriptAgent` into pipeline (parallel with data+sentiment+filings); add SSE stages; update Manager prompt
+* [ ] **Task 4:** Frontend — `transcript_fetching` / `transcript_complete` stages; Transcript agent card in LoadingSkeleton; surface key quotes in ResultsDashboard
 
 ### 🔴 Follow-up Items from History
 * **Security:** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
