@@ -76,7 +76,7 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
       cleanup();
       cleanupRef.current = null;
     };
-  }, [ticker]);
+  }, [ticker, masterCode]);
 
   return state;
 }
@@ -101,12 +101,12 @@ function useFastAnalysis(ticker: string | null): {
       setState({ status: "idle", report: null, error: null });
       return;
     }
+    let cancelled = false;
     setState({ status: "loading", report: null, error: null });
     fetchAnalysis(ticker)
-      .then((report) => setState({ status: "done", report, error: null }))
-      .catch((err: Error) =>
-        setState({ status: "error", report: null, error: err.message })
-      );
+      .then((report) => { if (!cancelled) setState({ status: "done", report, error: null }); })
+      .catch((err: Error) => { if (!cancelled) setState({ status: "error", report: null, error: err.message }); });
+    return () => { cancelled = true; };
   }, [ticker]);
 
   return state;
@@ -196,13 +196,12 @@ export default function Home() {
   const [showCodeDialog, setShowCodeDialog] = useState(false);
 
   // Deep mode: SSE stream with auth + Labor Illusion
-  const streamState = useAnalysisStream(
-    mode === "deep" ? ticker : null,
-    masterCode,
-  );
+  const deepTicker = mode === "deep" && ticker && !ticker.startsWith("__PENDING__") ? ticker : null;
+  const streamState = useAnalysisStream(deepTicker, masterCode);
 
   // Fast mode: sync fetch, no auth, no illusion
-  const fastState = useFastAnalysis(mode === "fast" ? ticker : null);
+  const fastTicker = mode === "fast" && ticker && !ticker.startsWith("__PENDING__") ? ticker : null;
+  const fastState = useFastAnalysis(fastTicker);
 
   // Unified view
   const status = mode === "deep" ? streamState.status : fastState.status;
@@ -241,14 +240,14 @@ export default function Home() {
     }
   }, [masterCode]);
 
-  function handleCodeSuccess(code: string) {
+  const handleCodeSuccess = useCallback((code: string) => {
     setMasterCodeState(code);
     setMasterCode(code);
     setShowCodeDialog(false);
-    if (ticker?.startsWith("__PENDING__")) {
-      setTicker(ticker.replace("__PENDING__", ""));
-    }
-  }
+    setTicker((prev) =>
+      prev?.startsWith("__PENDING__") ? prev.replace("__PENDING__", "") : prev
+    );
+  }, []);
 
   function handleCodeCancel() {
     setShowCodeDialog(false);
