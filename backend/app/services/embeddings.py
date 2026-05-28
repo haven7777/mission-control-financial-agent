@@ -14,7 +14,9 @@ def embed_batch(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     settings = get_settings()
+    if not settings.openai_api_key:
+        raise ValueError("openai_api_key is not configured — set it in backend/.env")
     client = OpenAI(api_key=settings.openai_api_key)
     log.info("embeddings: embedding %d text(s)", len(texts))
     response = client.embeddings.create(model=_MODEL, input=texts)
-    return [item.embedding for item in response.data]
+    return [item.embedding for item in sorted(response.data, key=lambda x: x.index)]
