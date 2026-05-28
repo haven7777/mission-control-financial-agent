@@ -67,6 +67,16 @@ export function useLabourIllusion(
     intervalRef.current = setInterval(() => {
       const now = Date.now() - startRef.current;
       setElapsed(now);
+
+      // Hard cap: stop timer if we've exceeded MAX_MS + 5s (backend may have errored)
+      if (now > MAX_MS + 5_000) {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        return;
+      }
+
       if (now >= targetRef.current && reportRef.current !== null) {
         setRevealedReport(reportRef.current);
         if (intervalRef.current) {

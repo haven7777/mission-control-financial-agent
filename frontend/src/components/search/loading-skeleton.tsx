@@ -172,8 +172,9 @@ export function LoadingSkeleton({ query, complete = false, illusionMessage }: Lo
     }
   }, [])
 
-  const overallProgress =
+  const rawProgress =
     Object.values(agentStates).filter((s) => s.complete).length / agents.length
+  const overallProgress = complete ? rawProgress : Math.min(0.9, rawProgress)
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-12">

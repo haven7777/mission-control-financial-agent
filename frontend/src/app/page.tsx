@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DashboardHeader } from "@/components/dashboard/header";
 import { AgentTerminal, type AgentEvent, type AgentEventStatus } from "@/components/dashboard/agent-terminal";
@@ -160,19 +160,18 @@ export default function Home() {
 
   const { status, stages, report, error } = useAnalysisStream(ticker);
 
-  const isActive = status === "streaming" || status === "done";
+  const isActive = status === "streaming" || status === "done" || (status === "error" && report !== null);
   const { revealedReport, illusionMessage } = useLabourIllusion(
     report,
     isActive,
     ticker,
   );
 
-  function handleSearch(query: string) {
-    // Category clicks pass comma-separated tickers — take only the first
+  const handleSearch = useCallback((query: string) => {
     const first = query.split(",")[0].trim().toUpperCase();
     if (!first) return;
     setTicker(first);
-  }
+  }, []);
 
   // ── Results ───────────────────────────────────────────────────────────────
   if (revealedReport && ticker) {
