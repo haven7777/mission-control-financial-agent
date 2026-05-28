@@ -100,6 +100,24 @@ export interface FilingsContext {
   is_empty: boolean;
 }
 
+export interface DodgedQuestion {
+  analyst_question: string;
+  management_response: string;
+  evasion_signal: string;
+}
+
+export interface TranscriptContext {
+  ticker: string;
+  quarter: number;
+  year: number;
+  date: string | null;
+  executive_tone: "confident" | "cautious" | "defensive" | "neutral";
+  management_sentiment: "positive" | "neutral" | "negative";
+  key_forward_statements: string[];
+  dodged_questions: DodgedQuestion[];
+  is_empty: boolean;
+}
+
 export type FinalReport = {
   ticker: string;
   company_name: string;
@@ -110,6 +128,7 @@ export type FinalReport = {
   bull_case: BullCase | null;
   bear_case: BearCase | null;
   filings_context: FilingsContext | null;
+  transcript_context: TranscriptContext | null;
   data_snapshot: DataAgentReport;
   sentiment_snapshot: SentimentAgentReport;
   model_used: string;
@@ -173,6 +192,9 @@ export type ProgressStage =
   | "filings_fetching"
   | "filings_complete"
   | "filings_unavailable"
+  | "transcript_fetching"
+  | "transcript_complete"
+  | "transcript_unavailable"
   | "data_complete"
   | "sentiment_complete"
   | "sentiment_unavailable"

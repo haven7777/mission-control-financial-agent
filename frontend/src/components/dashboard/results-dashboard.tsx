@@ -6,6 +6,7 @@ import { AgentTerminal, type AgentEvent } from "@/components/dashboard/agent-ter
 import { SynthesisConsole } from "@/components/dashboard/synthesis-console"
 import { EvidencePanel } from "@/components/dashboard/evidence-panel"
 import { DebatePanel } from "@/components/dashboard/debate-panel"
+import { ManagementTonePanel } from "@/components/dashboard/management-tone-panel"
 import {
   Sheet,
   SheetContent,
@@ -13,7 +14,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Terminal } from "lucide-react"
+import { Terminal, Mic } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { FinalReport } from "@/lib/api"
 
@@ -80,6 +81,22 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
                   <h2 className="text-xl font-semibold">AI Debate: Bull vs. Bear</h2>
                 </div>
                 <DebatePanel bull_case={report.bull_case} bear_case={report.bear_case} />
+              </div>
+            </section>
+          )}
+
+          {/* Earnings Call: Management Tone */}
+          {report.transcript_context && !report.transcript_context.is_empty && (
+            <section>
+              <div className="p-8 rounded-2xl border border-border/30 bg-card/80">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="w-3 h-3 rounded-full bg-agent-transcript" />
+                  <h2 className="text-xl font-semibold">Management Tone Analysis</h2>
+                  <span className="text-xs text-muted-foreground ml-2 font-mono bg-muted/50 px-3 py-1 rounded-lg">
+                    Earnings Call
+                  </span>
+                </div>
+                <ManagementTonePanel ctx={report.transcript_context} />
               </div>
             </section>
           )}

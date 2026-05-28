@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { Database, BarChart3, Users, AlertTriangle, CheckCircle2, Scale, FileText } from "lucide-react"
+import { Database, BarChart3, Users, AlertTriangle, CheckCircle2, Scale, FileText, Mic } from "lucide-react"
 
 interface LoadingSkeletonProps {
   query: string
@@ -89,27 +89,42 @@ const agents = [
       "Embedding and indexing filing chunks...",
     ],
   },
+  {
+    id: "transcript",
+    name: "Transcript Agent",
+    icon: Mic,
+    color: "text-agent-transcript",
+    bgColor: "bg-agent-transcript",
+    tasks: [
+      "Fetching latest earnings call transcript...",
+      "Extracting Q&A section...",
+      "Detecting executive tone...",
+      "Identifying evasive responses...",
+    ],
+  },
 ]
 
 const ALL_COMPLETE = {
-  data:      { taskIndex: 3, complete: true },
-  sentiment: { taskIndex: 3, complete: true },
-  manager:   { taskIndex: 3, complete: true },
-  critic:    { taskIndex: 3, complete: true },
-  debate:    { taskIndex: 3, complete: true },
-  filings:   { taskIndex: 3, complete: true },
+  data:       { taskIndex: 3, complete: true },
+  sentiment:  { taskIndex: 3, complete: true },
+  manager:    { taskIndex: 3, complete: true },
+  critic:     { taskIndex: 3, complete: true },
+  debate:     { taskIndex: 3, complete: true },
+  filings:    { taskIndex: 3, complete: true },
+  transcript: { taskIndex: 3, complete: true },
 }
 
 export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProps) {
   const [agentStates, setAgentStates] = useState<
     Record<string, { taskIndex: number; complete: boolean }>
   >({
-    data: { taskIndex: 0, complete: false },
-    sentiment: { taskIndex: 0, complete: false },
-    manager: { taskIndex: 0, complete: false },
-    critic: { taskIndex: 0, complete: false },
-    debate: { taskIndex: 0, complete: false },
-    filings: { taskIndex: 0, complete: false },
+    data:       { taskIndex: 0, complete: false },
+    sentiment:  { taskIndex: 0, complete: false },
+    manager:    { taskIndex: 0, complete: false },
+    critic:     { taskIndex: 0, complete: false },
+    debate:     { taskIndex: 0, complete: false },
+    filings:    { taskIndex: 0, complete: false },
+    transcript: { taskIndex: 0, complete: false },
   })
 
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -201,7 +216,7 @@ export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProp
       </div>
 
       {/* Agent Cards */}
-      <div className="w-full max-w-6xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="w-full max-w-7xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
         {agents.map((agent) => {
           const Icon = agent.icon
           const state = agentStates[agent.id]
