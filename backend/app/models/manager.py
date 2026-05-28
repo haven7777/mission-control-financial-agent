@@ -17,6 +17,7 @@ from app.models.agents import DataAgentReport
 from app.models.debate import BullCase, BearCase
 from app.models.filings import FilingsContext
 from app.models.sentiment import SentimentAgentReport
+from app.models.transcript import TranscriptContext
 
 
 class OverallView(str, Enum):
@@ -63,6 +64,9 @@ class FinalReport(BaseModel):
 
     # SEC filings context (populated when Supabase + EDGAR are available)
     filings_context: FilingsContext | None = None
+
+    # Earnings call transcript analysis (populated when FMP is configured)
+    transcript_context: TranscriptContext | None = None
 
     # Grounding so consumers can drill down without a second request
     data_snapshot: DataAgentReport
