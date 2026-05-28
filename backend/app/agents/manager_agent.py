@@ -23,16 +23,20 @@ from pydantic import BaseModel, ConfigDict
 from app.config import get_settings
 from app.models.agents import DataAgentReport
 from app.models.debate import BullCase, BearCase
+from app.models.filings import FilingsContext
 from app.models.manager import FinalReport, ManagerSynthesis
 from app.models.sentiment import SentimentAgentReport
 
 log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
-    "You are a senior investment analyst. You will receive (1) financial / "
-    "fundamental data for a publicly-traded stock, (2) sentiment from recent "
-    "news coverage, and optionally (3) a structured bull/bear debate from "
-    "specialist analysts.\n\n"
+    "You are a senior investment analyst. You will receive:\n"
+    "  (1) Financial / fundamental data for a publicly-traded stock.\n"
+    "  (2) Sentiment from recent news coverage.\n"
+    "  (3) Optionally: a structured bull/bear debate from specialist analysts.\n"
+    "  (4) Optionally: verbatim excerpts from the company's latest SEC 10-K filing "
+    "(Risk Factors and MD&A). When present, treat these as primary sources — "
+    "quote or paraphrase them directly in your strengths and risks.\n\n"
     "Synthesize everything into a balanced, investor-facing brief. Respond as "
     "a JSON object matching this schema:\n"
     '  {"overall_view": "positive"|"negative"|"mixed"|"neutral",\n'
@@ -67,6 +71,7 @@ class _ManagerAgentState(BaseModel):
     revision_instruction: str | None = None
     bull_case: BullCase | None = None
     bear_case: BearCase | None = None
+    filings_context: FilingsContext | None = None
 
 
 # --- Prompt formatting -------------------------------------------------------
@@ -126,6 +131,16 @@ def _format_sentiment(sent: SentimentAgentReport) -> str:
     return "\n".join(lines)
 
 
+def _format_filings(ctx: FilingsContext) -> str:
+    if ctx.is_empty or not ctx.chunks:
+        return ""
+    lines = [f"SEC FILING CONTEXT ({ctx.form_type} — sourced from EDGAR):"]
+    for chunk in ctx.chunks:
+        label = "Risk Factors" if chunk.section == "risk_factors" else "MD&A"
+        lines.append(f"\n[{label}]\n{chunk.content}")
+    return "\n".join(lines)
+
+
 # --- Nodes -------------------------------------------------------------------
 
 def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
@@ -164,6 +179,11 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
             f"\n\nWeigh the bull and bear cases above when forming your final view."
         )
 
+    if state.filings_context and not state.filings_context.is_empty:
+        filings_block = _format_filings(state.filings_context)
+        if filings_block:
+            user_payload += f"\n\n{filings_block}"
+
     if state.revision_instruction:
         user_payload = (
             f"REVISION REQUIRED — your previous synthesis was rejected by the auditor.\n"
@@ -200,6 +220,7 @@ def run_manager_agent(
     revision_instruction: str | None = None,
     bull_case: BullCase | None = None,
     bear_case: BearCase | None = None,
+    filings_context: FilingsContext | None = None,
 ) -> FinalReport:
     """Run the synthesis graph and return a `FinalReport`.
 
@@ -219,6 +240,7 @@ def run_manager_agent(
         "revision_instruction": revision_instruction,
         "bull_case": bull_case,
         "bear_case": bear_case,
+        "filings_context": filings_context,
     })
     synthesis: ManagerSynthesis = (
         result["synthesis"] if isinstance(result, dict) else result.synthesis
@@ -238,6 +260,7 @@ def run_manager_agent(
         model_used=get_settings().openai_model,
         bull_case=bull_case,
         bear_case=bear_case,
+        filings_context=filings_context,
     )
 
 
