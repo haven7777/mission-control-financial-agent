@@ -23,6 +23,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
+from app.agents.delta_refresh import run_delta_refresh
 from app.agents.bear_agent import run_bear_agent
 from app.agents.bull_agent import run_bull_agent
 from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
@@ -61,8 +62,31 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         age_minutes = int(
             (datetime.now(timezone.utc) - cached.generated_at).total_seconds() / 60
         )
-        yield _progress("cache_hit", f"Serving cached analysis from {age_minutes}m ago")
-        yield {"event": "result", "data": cached.model_dump(mode="json")}
+        yield _progress("cache_hit", f"Cache hit from {age_minutes}m ago — refreshing live data…")
+        yield _progress("delta_refreshing", "Fetching live price and scanning recent news…")
+
+        try:
+            refreshed = run_delta_refresh(cached)
+            n_new = refreshed.sentiment_snapshot.articles_analyzed
+            old_n = cached.sentiment_snapshot.articles_analyzed
+            if n_new != old_n:
+                yield _progress(
+                    "delta_complete",
+                    f"Live price refreshed — {n_new} recent article{'s' if n_new != 1 else ''} found",
+                )
+            else:
+                yield _progress("delta_complete", "Live price refreshed — no new developments found")
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pipeline_stream: delta refresh failed: %s", exc)
+            refreshed = cached
+            yield _progress("delta_complete", "Delta refresh unavailable — serving cached analysis")
+
+        yield {"event": "result", "data": refreshed.model_dump(mode="json")}
+
+        try:
+            store_report(refreshed)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("pipeline_stream: failed to update cache after delta refresh: %s", exc)
         return
 
     yield _progress("cache_miss", "No recent cache — running full analysis…")

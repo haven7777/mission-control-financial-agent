@@ -70,11 +70,12 @@ def search(
     *,
     max_results: int = 5,
     search_depth: str = "basic",
+    days: int | None = None,
 ) -> NewsSearchResult:
     """Run a Tavily search.
 
     `search_depth` is either "basic" (cheaper) or "advanced". `max_results`
-    is clamped 1..20.
+    is clamped 1..20. `days` limits results to the last N days (None = no filter).
     """
     api_key = get_settings().tavily_api_key
     if not api_key:
@@ -93,6 +94,9 @@ def search(
         "include_raw_content": False,
         "include_images": False,
     }
+
+    if days is not None:
+        body["days"] = max(1, int(days))
 
     _rate_limiter.wait()
     payload = _post(body)

@@ -133,6 +133,7 @@ export type FinalReport = {
   sentiment_snapshot: SentimentAgentReport;
   model_used: string;
   generated_at: string;
+  delta_refreshed: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -188,6 +189,8 @@ export function fetchAnalysis(ticker: string): Promise<FinalReport> {
 export type ProgressStage =
   | "cache_hit"
   | "cache_miss"
+  | "delta_refreshing"
+  | "delta_complete"
   | "started"
   | "filings_fetching"
   | "filings_complete"

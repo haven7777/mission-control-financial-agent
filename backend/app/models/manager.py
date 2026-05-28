@@ -75,3 +75,4 @@ class FinalReport(BaseModel):
     # Provenance
     model_used: str
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    delta_refreshed: bool = False  # True when served from cache with live data refresh

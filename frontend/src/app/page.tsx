@@ -84,6 +84,8 @@ function useAnalysisStream(ticker: string | null): StreamState {
 const STAGE_AGENT: Record<ProgressStage, string> = {
   cache_hit:             "Report Cache",
   cache_miss:            "Report Cache",
+  delta_refreshing:      "Report Cache",
+  delta_complete:        "Report Cache",
   started:               "System",
   filings_fetching:       "SEC Filings",
   filings_complete:       "SEC Filings",
@@ -106,6 +108,8 @@ const STAGE_AGENT: Record<ProgressStage, string> = {
 const STAGE_STATUS: Record<ProgressStage, AgentEventStatus> = {
   cache_hit:             "approved",
   cache_miss:            "running",
+  delta_refreshing:      "running",
+  delta_complete:        "approved",
   started:               "running",
   filings_fetching:       "running",
   filings_complete:       "approved",
