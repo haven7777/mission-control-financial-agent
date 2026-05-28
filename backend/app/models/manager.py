@@ -36,11 +36,11 @@ class ManagerSynthesis(BaseModel):
     )
     key_strengths: list[str] = Field(
         min_length=1, max_length=6,
-        description="2-4 bullets, each one sentence, grounded in the supplied data/sentiment.",
+        description="2-6 bullets, each one sentence, grounded in the supplied data/sentiment.",
     )
     key_risks: list[str] = Field(
         min_length=1, max_length=6,
-        description="2-4 bullets, each one sentence, grounded in the supplied data/sentiment.",
+        description="2-6 bullets, each one sentence, grounded in the supplied data/sentiment.",
     )
     deep_narrative: str | None = Field(
         default=None,

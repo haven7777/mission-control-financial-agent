@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-import pytest
-
 from app.models.agents import DataAgentReport
 from app.models.financial import CompanyOverview, StockQuote
 from app.models.manager import FinalReport, ManagerSynthesis, OverallView

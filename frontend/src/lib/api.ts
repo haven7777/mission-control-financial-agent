@@ -129,6 +129,7 @@ export type FinalReport = {
   bear_case: BearCase | null;
   filings_context: FilingsContext | null;
   transcript_context: TranscriptContext | null;
+  deep_narrative: string | null;
   data_snapshot: DataAgentReport;
   sentiment_snapshot: SentimentAgentReport;
   model_used: string;
