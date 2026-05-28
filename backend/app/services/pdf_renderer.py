@@ -1,4 +1,4 @@
-"""HTML and PDF rendering for FinalReport using Jinja2 + WeasyPrint."""
+"""HTML and PDF rendering for FinalReport using Jinja2 + Playwright (Chromium)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +20,12 @@ def render_report_html(report: FinalReport, *, rtl: bool = False) -> str:
 
 
 def render_report_pdf(report: FinalReport, *, rtl: bool = False) -> bytes:
-    from weasyprint import HTML  # lazy: system libs only needed at render time
+    from playwright.sync_api import sync_playwright
     html_str = render_report_html(report, rtl=rtl)
-    return HTML(string=html_str).write_pdf()
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.set_content(html_str, wait_until="networkidle")
+        pdf = page.pdf(format="A4", print_background=True)
+        browser.close()
+    return pdf
