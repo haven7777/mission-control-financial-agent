@@ -46,14 +46,16 @@ function LockedCard({ children }: { children: React.ReactNode }) {
 export function ResultsDashboard({ ticker, report, terminalEvents, confidence, onBack, mode, masterCode }: ResultsDashboardProps) {
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   async function handleExportPdf() {
     if (!masterCode) return
     setExporting(true)
+    setExportError(null)
     try {
       await exportPdf(report, masterCode)
     } catch (e) {
-      console.error("PDF export error", e)
+      setExportError(e instanceof Error ? e.message : "Export failed")
     } finally {
       setExporting(false)
     }
@@ -64,14 +66,19 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
       {/* Header with Under the Hood button */}
       <DashboardHeader query={ticker} onBack={onBack} status="approved">
         {mode === "deep" && masterCode && (
-          <button
-            onClick={handleExportPdf}
-            disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            {exporting ? "Generating…" : "Export PDF"}
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              onClick={handleExportPdf}
+              disabled={exporting}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              {exporting ? "Generating…" : "Export PDF"}
+            </button>
+            {exportError && (
+              <p className="text-xs text-destructive max-w-[220px] text-right">{exportError}</p>
+            )}
+          </div>
         )}
         <Sheet open={terminalOpen} onOpenChange={setTerminalOpen}>
           <SheetTrigger className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm font-medium border border-border/50">
