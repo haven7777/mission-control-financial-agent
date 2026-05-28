@@ -45,7 +45,7 @@ log = logging.getLogger(__name__)
 _TICKER_PATTERN = re.compile(r"^[A-Z0-9.\-]{1,10}$")
 
 _INJECTION_RE = re.compile(
-    r"(ignore\s+(previous|all|prior)\s+instructions"
+    r"(ignore\s+(?:previous|all|prior)(?:\s+(?:previous|all|prior))?\s+instructions"
     r"|you\s+are\s+now\s+(a|an)"
     r"|forget\s+(all|everything|previous)"
     r"|jailbreak"
