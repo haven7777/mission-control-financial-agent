@@ -29,6 +29,8 @@ from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
 from app.agents.filings_agent import run_filings_agent
 from app.agents.manager_agent import run_manager_agent
+from app.agents.transcript_agent import run_transcript_agent
+from app.models.transcript import TranscriptContext
 from app.agents.sentiment_agent import NoArticlesFoundError, run_sentiment_agent
 from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueVerdict
@@ -98,20 +100,30 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         except Exception as exc:  # noqa: BLE001
             result_q.put(("filings_err", exc))
 
+    def _run_transcript() -> None:
+        try:
+            result_q.put(("transcript_ok", run_transcript_agent(normalized)))
+        except Exception as exc:  # noqa: BLE001
+            result_q.put(("transcript_err", exc))
+
     yield _progress("started", f"Starting analysis for {normalized}…")
     yield _progress("filings_fetching", "Retrieving SEC filing from EDGAR…")
+    yield _progress("transcript_fetching", "Fetching earnings call transcript from FMP…")
 
     data_thread = threading.Thread(target=_run_data, daemon=True)
     sentiment_thread = threading.Thread(target=_run_sentiment, daemon=True)
     filings_thread = threading.Thread(target=_run_filings, daemon=True)
+    transcript_thread = threading.Thread(target=_run_transcript, daemon=True)
     data_thread.start()
     sentiment_thread.start()
     filings_thread.start()
+    transcript_thread.start()
 
     data_report: DataAgentReport | None = None
     sentiment_report: SentimentAgentReport | None = None
     filings_context: FilingsContext | None = None
-    remaining = 3
+    transcript_context: TranscriptContext | None = None
+    remaining = 4
 
     while remaining:
         tag, value = result_q.get()
@@ -157,6 +169,7 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
             data_thread.join()
             sentiment_thread.join()
             filings_thread.join()
+            transcript_thread.join()
             return
 
         elif tag == "filings_err":
@@ -165,9 +178,35 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
             remaining -= 1
             yield _progress("filings_unavailable", "SEC filing retrieval failed — continuing without filing context")
 
+        elif tag == "transcript_ok":
+            transcript_context = value
+            remaining -= 1
+            if value.is_empty:
+                yield _progress(
+                    "transcript_unavailable",
+                    "No earnings call transcript available — continuing without transcript context",
+                )
+            else:
+                n = len(value.dodged_questions)
+                yield _progress(
+                    "transcript_complete",
+                    f"Q{value.quarter} {value.year} call analyzed"
+                    + (f" — {n} dodged question{'s' if n != 1 else ''} detected" if n else ""),
+                )
+
+        elif tag == "transcript_err":
+            log.warning("pipeline_stream: transcript_err — %s", value)
+            transcript_context = TranscriptContext(ticker=normalized, is_empty=True)
+            remaining -= 1
+            yield _progress(
+                "transcript_unavailable",
+                "Transcript retrieval failed — continuing without transcript context",
+            )
+
     data_thread.join()
     sentiment_thread.join()
     filings_thread.join()
+    transcript_thread.join()
 
     # ── Phase 1.5: Bull vs. Bear debate (parallel) ────────────────────────────
     yield _progress("debating", "Bull analyst vs. Bear analyst debating the stock…")
@@ -237,6 +276,7 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
                 bull_case=bull_case,
                 bear_case=bear_case,
                 filings_context=filings_context,
+                transcript_context=transcript_context,
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("pipeline_stream: manager failed (round %d): %s", revision_round, exc)

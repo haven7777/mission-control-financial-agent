@@ -34,6 +34,8 @@ from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
 from app.agents.filings_agent import run_filings_agent
 from app.agents.manager_agent import run_manager_agent
+from app.agents.transcript_agent import run_transcript_agent
+from app.models.transcript import TranscriptContext
 from app.agents.sentiment_agent import NoArticlesFoundError, run_sentiment_agent
 from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueReport, CritiqueVerdict
@@ -52,6 +54,7 @@ class _PipelineState(BaseModel):
     data: DataAgentReport | None = None
     sentiment: SentimentAgentReport | None = None
     filings_context: FilingsContext | None = None
+    transcript_context: TranscriptContext | None = None
     financial_metrics: dict = {}
     news_sentiment: dict = {}
     bull_case: BullCase | None = None
@@ -92,6 +95,12 @@ def _filings_node(state: _PipelineState) -> dict:
     log.info("pipeline: filings node for %s", state.ticker)
     ctx = run_filings_agent(state.ticker)
     return {"filings_context": ctx}
+
+
+def _transcript_node(state: _PipelineState) -> dict:
+    log.info("pipeline: transcript node for %s", state.ticker)
+    ctx = run_transcript_agent(state.ticker)
+    return {"transcript_context": ctx}
 
 
 def _debate_node(state: _PipelineState) -> dict:
@@ -150,6 +159,7 @@ def _manager_node(state: _PipelineState) -> dict:
         bull_case=state.bull_case,
         bear_case=state.bear_case,
         filings_context=state.filings_context,
+        transcript_context=state.transcript_context,
     )}
 
 
@@ -202,17 +212,20 @@ def _build_graph():
     graph.add_node("data", _data_node)
     graph.add_node("sentiment", _sentiment_node)
     graph.add_node("filings", _filings_node)
+    graph.add_node("transcript", _transcript_node)
     graph.add_node("debate", _debate_node)
     graph.add_node("manager", _manager_node)
     graph.add_node("critic", _critic_node)
 
-    # data, sentiment, and filings run in parallel; all three feed into debate
+    # data, sentiment, filings, and transcript run in parallel; all four feed into debate
     graph.add_edge(START, "data")
     graph.add_edge(START, "sentiment")
     graph.add_edge(START, "filings")
+    graph.add_edge(START, "transcript")
     graph.add_edge("data", "debate")
     graph.add_edge("sentiment", "debate")
     graph.add_edge("filings", "debate")
+    graph.add_edge("transcript", "debate")
 
     # debate feeds into manager
     graph.add_edge("debate", "manager")
