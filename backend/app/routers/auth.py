@@ -6,8 +6,9 @@ Returns 200 OK on success; 401/403 from the require_master_code dependency.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
+from app.services.limiter import limiter
 from app.services.master_code_auth import require_master_code
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -18,5 +19,6 @@ router = APIRouter(prefix="/api", tags=["auth"])
     summary="Validate a Master Code (returns 200 if valid, 401/403 otherwise)",
     dependencies=[Depends(require_master_code)],
 )
-def auth_ping() -> dict[str, str]:
+@limiter.limit("10/minute")
+def auth_ping(request: Request) -> dict[str, str]:
     return {"status": "ok"}

@@ -11,7 +11,16 @@ CREATE TABLE IF NOT EXISTS master_codes (
 -- Fast lookup by code value
 CREATE INDEX IF NOT EXISTS idx_master_codes_code ON master_codes (code);
 
--- Seed one beta code — change this before any public distribution!
+-- Block anon/authenticated roles from reading codes; service_role bypasses RLS automatically
+ALTER TABLE master_codes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "no public access" ON master_codes
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false);
+
+-- Seed one beta code — rotate before any public distribution!
 INSERT INTO master_codes (code, is_active)
 VALUES ('DEEP-RESEARCH-BETA-2026', true)
 ON CONFLICT (code) DO NOTHING;

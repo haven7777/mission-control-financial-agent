@@ -54,16 +54,18 @@ def _validate_code(code: str) -> bool:
     return is_valid
 
 
-async def require_master_code(
+def require_master_code(
     x_master_code: str | None = Header(default=None),
     master_code: str | None = Query(default=None),
 ) -> None:
     """FastAPI dependency: validates Master Code; raises 401/403 on failure.
 
     Accepts code from X-Master-Code header (fetch) or ?master_code= query
-    param (EventSource, which cannot set custom headers).
+    param (EventSource, which cannot set custom headers). Plain def so
+    FastAPI runs it in a thread-pool, avoiding event-loop stalls from the
+    blocking Supabase call in _validate_code.
     """
-    code = x_master_code or master_code
+    code = x_master_code if x_master_code is not None else master_code
     if not code:
         raise HTTPException(
             status_code=401,
