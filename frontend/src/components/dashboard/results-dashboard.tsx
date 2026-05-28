@@ -14,7 +14,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Terminal, Mic } from "lucide-react"
+import { Terminal } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { FinalReport } from "@/lib/api"
 

@@ -75,9 +75,11 @@ export function ManagementTonePanel({ ctx }: ManagementTonePanelProps) {
                 <p className="text-sm text-foreground/80 italic pl-4 border-l-2 border-border/40">
                   &ldquo;{dq.management_response}&rdquo;
                 </p>
-                <p className="text-xs text-warning/90">
-                  <span className="font-semibold">Evasion signal:</span> {dq.evasion_signal}
-                </p>
+                {dq.evasion_signal.length > 0 && (
+                  <p className="text-xs text-warning/90">
+                    <span className="font-semibold">Evasion signal:</span> {dq.evasion_signal}
+                  </p>
+                )}
               </div>
             ))}
           </div>
