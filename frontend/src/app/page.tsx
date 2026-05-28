@@ -264,6 +264,8 @@ export default function Home() {
         terminalEvents={stagesToEvents(stages)}
         confidence={parseConfidence(stages)}
         onBack={() => setTicker(null)}
+        mode={mode}
+        masterCode={masterCode}
       />
     );
   }

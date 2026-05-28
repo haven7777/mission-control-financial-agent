@@ -195,6 +195,31 @@ export async function validateMasterCode(code: string): Promise<boolean> {
   }
 }
 
+/** Export a FinalReport as a PDF file download. Requires a valid Master Code. */
+export async function exportPdf(
+  report: FinalReport,
+  masterCode: string,
+  rtl = false,
+): Promise<void> {
+  const url = `${API_BASE_URL}/api/export/pdf${rtl ? "?rtl=true" : ""}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Master-Code": masterCode,
+    },
+    body: JSON.stringify(report),
+  });
+  if (!resp.ok) throw new Error(`PDF export failed: ${resp.status}`);
+  const blob = await resp.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = `${report.ticker}_deep_research.pdf`;
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
 // ---------------------------------------------------------------------------
 // SSE streaming
 // ---------------------------------------------------------------------------

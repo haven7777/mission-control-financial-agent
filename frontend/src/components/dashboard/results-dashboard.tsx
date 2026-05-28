@@ -14,9 +14,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Terminal } from "lucide-react"
+import { Download, Lock, Terminal } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { FinalReport } from "@/lib/api"
+import { exportPdf, type FinalReport } from "@/lib/api"
 
 interface ResultsDashboardProps {
   ticker: string
@@ -24,15 +24,55 @@ interface ResultsDashboardProps {
   terminalEvents: AgentEvent[]
   confidence: number
   onBack: () => void
+  mode: "fast" | "deep"
+  masterCode?: string | null
 }
 
-export function ResultsDashboard({ ticker, report, terminalEvents, confidence, onBack }: ResultsDashboardProps) {
+function LockedCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative rounded-2xl overflow-hidden">
+      <div className="blur-sm pointer-events-none select-none opacity-50">{children}</div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/70 backdrop-blur-[2px]">
+        <Lock className="w-6 h-6 text-muted-foreground" />
+        <p className="text-sm font-semibold text-foreground">Deep Research PRO</p>
+        <p className="text-xs text-muted-foreground text-center max-w-[200px]">
+          Earnings transcripts &amp; management tone require Deep mode
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export function ResultsDashboard({ ticker, report, terminalEvents, confidence, onBack, mode, masterCode }: ResultsDashboardProps) {
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExportPdf() {
+    if (!masterCode) return
+    setExporting(true)
+    try {
+      await exportPdf(report, masterCode)
+    } catch (e) {
+      console.error("PDF export error", e)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Header with Under the Hood button */}
       <DashboardHeader query={ticker} onBack={onBack} status="approved">
+        {mode === "deep" && masterCode && (
+          <button
+            onClick={handleExportPdf}
+            disabled={exporting}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? "Generating…" : "Export PDF"}
+          </button>
+        )}
         <Sheet open={terminalOpen} onOpenChange={setTerminalOpen}>
           <SheetTrigger className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm font-medium border border-border/50">
             <Terminal className="w-4 h-4 text-primary" />
@@ -86,7 +126,22 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
           )}
 
           {/* Earnings Call: Management Tone */}
-          {report.transcript_context && !report.transcript_context.is_empty && (
+          {mode === "fast" ? (
+            <section>
+              <LockedCard>
+                <div className="p-8 rounded-2xl border border-border/30 bg-card/80">
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="w-3 h-3 rounded-full bg-agent-transcript" />
+                    <h2 className="text-xl font-semibold">Management Tone Analysis</h2>
+                    <span className="text-xs text-muted-foreground ml-2 font-mono bg-muted/50 px-3 py-1 rounded-lg">
+                      Earnings Call
+                    </span>
+                  </div>
+                  <div className="h-32 rounded-xl bg-muted/30" />
+                </div>
+              </LockedCard>
+            </section>
+          ) : report.transcript_context && !report.transcript_context.is_empty ? (
             <section>
               <div className="p-8 rounded-2xl border border-border/30 bg-card/80">
                 <div className="flex items-center gap-3 mb-8">
@@ -99,7 +154,7 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
                 <ManagementTonePanel ctx={report.transcript_context} />
               </div>
             </section>
-          )}
+          ) : null}
 
           {/* Supporting Data: Market & News */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
