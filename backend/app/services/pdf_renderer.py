@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from weasyprint import HTML
 
 from app.models.manager import FinalReport
 
@@ -21,5 +20,6 @@ def render_report_html(report: FinalReport, *, rtl: bool = False) -> str:
 
 
 def render_report_pdf(report: FinalReport, *, rtl: bool = False) -> bytes:
+    from weasyprint import HTML  # lazy: system libs only needed at render time
     html_str = render_report_html(report, rtl=rtl)
     return HTML(string=html_str).write_pdf()

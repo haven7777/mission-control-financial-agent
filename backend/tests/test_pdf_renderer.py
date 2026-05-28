@@ -5,25 +5,30 @@ Covers:
   - RTL / LTR flag behaviour
   - PDF rendering (bytes output, PDF magic bytes, minimum size)
 
-Note: PDF rendering tests use ``unittest.mock`` to patch WeasyPrint's HTML
-class.  The WeasyPrint C-extension (Pango/GObject) requires native ARM64
-system libraries that may not be present on all developer workstations.
-The HTML rendering tests exercise the real Jinja2 template pipeline; the
-PDF tests verify that render_report_pdf() calls WeasyPrint correctly.
+WeasyPrint uses C system libraries (GObject/Pango) that may not be present
+on all developer workstations. We pre-stub the weasyprint module in
+sys.modules so that pdf_renderer can be imported and the lazy
+``from weasyprint import HTML`` inside render_report_pdf resolves to a mock.
+The HTML tests run against the real Jinja2 pipeline with no mocking.
 """
 from __future__ import annotations
 
+import sys
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.agents import DataAgentReport
-from app.models.financial import CompanyOverview, StockQuote
-from app.models.manager import FinalReport, OverallView
-from app.models.sentiment import Sentiment, SentimentAgentReport
-from app.services.pdf_renderer import render_report_html, render_report_pdf
+# Pre-stub weasyprint before any import tries to load its C extensions.
+_weasyprint_stub = MagicMock()
+sys.modules.setdefault("weasyprint", _weasyprint_stub)
+
+from app.models.agents import DataAgentReport  # noqa: E402
+from app.models.financial import CompanyOverview, StockQuote  # noqa: E402
+from app.models.manager import FinalReport, OverallView  # noqa: E402
+from app.models.sentiment import Sentiment, SentimentAgentReport  # noqa: E402
+from app.services.pdf_renderer import render_report_html, render_report_pdf  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -143,9 +148,8 @@ def test_render_html_ltr_default(sample_report: FinalReport) -> None:
 def test_render_pdf_returns_bytes(sample_report: FinalReport) -> None:
     """render_report_pdf returns bytes and starts with the PDF magic bytes."""
     mock_html_cls = _make_mock_html(_FAKE_PDF)
-    with patch("app.services.pdf_renderer.HTML", mock_html_cls):
-        pdf = render_report_pdf(sample_report)
-
+    _weasyprint_stub.HTML = mock_html_cls
+    pdf = render_report_pdf(sample_report)
     assert isinstance(pdf, bytes)
     assert pdf[:4] == b"%PDF"
 
@@ -153,8 +157,7 @@ def test_render_pdf_returns_bytes(sample_report: FinalReport) -> None:
 def test_render_pdf_rtl(sample_report: FinalReport) -> None:
     """RTL PDF is rendered successfully and is of reasonable size."""
     mock_html_cls = _make_mock_html(_FAKE_PDF)
-    with patch("app.services.pdf_renderer.HTML", mock_html_cls):
-        pdf = render_report_pdf(sample_report, rtl=True)
-
+    _weasyprint_stub.HTML = mock_html_cls
+    pdf = render_report_pdf(sample_report, rtl=True)
     assert isinstance(pdf, bytes)
     assert len(pdf) > 1000
