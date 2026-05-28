@@ -2,14 +2,14 @@
 
 Graph shape:
 
-    START ──> data ─────┐
-        └──> sentiment ─┴──> debate ──> manager ──> critic ──┐
-                                                  ↑           │ needs_revision
-                                                  └───────────┘ (≤ MAX_REVISION_CYCLES)
-                                                              │
-                                                             END  (approved OR cycles exhausted)
+    START ──> data ──────┐
+        ├──> sentiment ──┼──> debate ──> manager ──> critic ──┐
+        └──> filings ────┘                         ↑           │ needs_revision
+                                                   └───────────┘ (≤ MAX_REVISION_CYCLES)
+                                                               │
+                                                              END  (approved OR cycles exhausted)
 
-`data` and `sentiment` execute concurrently; both feed into `debate`.
+`data`, `sentiment`, and `filings` execute concurrently; all three feed into `debate`.
 `debate` runs Bull and Bear agents concurrently, then feeds into `manager`.
 After `manager` drafts a synthesis, `critic` audits it. If the verdict is
 `needs_revision` and the cycle cap has not been reached, the pipeline routes
@@ -32,11 +32,13 @@ from app.agents.bear_agent import run_bear_agent
 from app.agents.bull_agent import run_bull_agent
 from app.agents.critic_agent import MAX_REVISION_CYCLES, run_critic_agent
 from app.agents.data_agent import run_data_agent
+from app.agents.filings_agent import run_filings_agent
 from app.agents.manager_agent import run_manager_agent
 from app.agents.sentiment_agent import NoArticlesFoundError, run_sentiment_agent
 from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueReport, CritiqueVerdict
 from app.models.debate import BearCase, BullCase
+from app.models.filings import FilingsContext
 from app.models.manager import FinalReport
 from app.models.sentiment import Sentiment, SentimentAgentReport
 
@@ -49,6 +51,7 @@ class _PipelineState(BaseModel):
     ticker: str
     data: DataAgentReport | None = None
     sentiment: SentimentAgentReport | None = None
+    filings_context: FilingsContext | None = None
     financial_metrics: dict = {}
     news_sentiment: dict = {}
     bull_case: BullCase | None = None
@@ -83,6 +86,12 @@ def _sentiment_node(state: _PipelineState) -> dict:
             is_zero_news=True,
         )
     return {"sentiment": report, "news_sentiment": report.news_sentiment}
+
+
+def _filings_node(state: _PipelineState) -> dict:
+    log.info("pipeline: filings node for %s", state.ticker)
+    ctx = run_filings_agent(state.ticker)
+    return {"filings_context": ctx}
 
 
 def _debate_node(state: _PipelineState) -> dict:
@@ -140,6 +149,7 @@ def _manager_node(state: _PipelineState) -> dict:
         revision_instruction,
         bull_case=state.bull_case,
         bear_case=state.bear_case,
+        filings_context=state.filings_context,
     )}
 
 
@@ -191,15 +201,18 @@ def _build_graph():
 
     graph.add_node("data", _data_node)
     graph.add_node("sentiment", _sentiment_node)
+    graph.add_node("filings", _filings_node)
     graph.add_node("debate", _debate_node)
     graph.add_node("manager", _manager_node)
     graph.add_node("critic", _critic_node)
 
-    # data and sentiment run in parallel; both feed into debate
+    # data, sentiment, and filings run in parallel; all three feed into debate
     graph.add_edge(START, "data")
     graph.add_edge(START, "sentiment")
+    graph.add_edge(START, "filings")
     graph.add_edge("data", "debate")
     graph.add_edge("sentiment", "debate")
+    graph.add_edge("filings", "debate")
 
     # debate feeds into manager
     graph.add_edge("debate", "manager")
