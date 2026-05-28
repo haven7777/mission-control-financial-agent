@@ -20,7 +20,7 @@ import logging
 
 from app.config import get_settings
 from app.models.filings import FilingChunk, FilingsContext
-from app.services.edgar import FilingNotFoundError, get_latest_filing_text
+from app.services.edgar import FilingFetchError, FilingNotFoundError, get_latest_filing_text
 from app.services.embeddings import embed_batch
 from app.services.filing_parser import chunk_text, extract_sections
 from app.services.filing_store import chunks_exist, search_chunks, store_chunks
@@ -83,6 +83,9 @@ def run_filings_agent(ticker: str) -> FilingsContext:
         if not raw_chunks:
             return FilingsContext(ticker=normalized, form_type=form_type, chunks=[], is_empty=True)
 
+        # Update form_type from stored data (may be 10-Q on cache-hit path)
+        form_type = raw_chunks[0].get("form_type", form_type)
+
         return FilingsContext(
             ticker=normalized,
             form_type=form_type,
@@ -98,6 +101,9 @@ def run_filings_agent(ticker: str) -> FilingsContext:
 
     except FilingNotFoundError as exc:
         log.info("filings_agent: no EDGAR filing for %s: %s", normalized, exc)
+        return FilingsContext(ticker=normalized, form_type=form_type, chunks=[], is_empty=True)
+    except FilingFetchError as exc:
+        log.warning("filings_agent: EDGAR fetch failed for %s: %s", normalized, exc)
         return FilingsContext(ticker=normalized, form_type=form_type, chunks=[], is_empty=True)
     except Exception as exc:  # noqa: BLE001
         log.warning("filings_agent: unexpected error for %s: %s", normalized, exc)
