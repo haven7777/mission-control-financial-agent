@@ -15,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from app.config import get_settings
 from app.routers import analyze as analyze_router
 from app.routers import auth as auth_router
+from app.routers import export as export_router
 from app.routers import quote as quote_router
 from app.services.limiter import limiter
 from app.services.tracing import configure_langsmith_tracing
@@ -92,3 +93,4 @@ def health() -> HealthResponse:
 app.include_router(quote_router.router)
 app.include_router(analyze_router.router)
 app.include_router(auth_router.router)
+app.include_router(export_router.router)

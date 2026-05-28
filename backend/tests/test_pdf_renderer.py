@@ -21,8 +21,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # Pre-stub weasyprint before any import tries to load its C extensions.
+# Use setdefault so we get the already-registered stub if another test module
+# pre-registered one first (e.g. test_export_router), then read it back from
+# sys.modules so _weasyprint_stub always refers to the live stub object.
 _weasyprint_stub = MagicMock()
 sys.modules.setdefault("weasyprint", _weasyprint_stub)
+_weasyprint_stub = sys.modules["weasyprint"]  # always the canonical stub
 
 from app.models.agents import DataAgentReport  # noqa: E402
 from app.models.financial import CompanyOverview, StockQuote  # noqa: E402
