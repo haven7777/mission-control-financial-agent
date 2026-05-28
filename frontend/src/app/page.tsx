@@ -22,6 +22,7 @@ import {
   type ProgressPayload,
   type ProgressStage,
 } from "@/lib/api";
+import { useLabourIllusion } from "@/hooks/use-labour-illusion";
 
 // ---------------------------------------------------------------------------
 // Streaming hook
@@ -159,6 +160,13 @@ export default function Home() {
 
   const { status, stages, report, error } = useAnalysisStream(ticker);
 
+  const isActive = status === "streaming" || status === "done";
+  const { revealedReport, illusionMessage } = useLabourIllusion(
+    report,
+    isActive,
+    ticker,
+  );
+
   function handleSearch(query: string) {
     // Category clicks pass comma-separated tickers — take only the first
     const first = query.split(",")[0].trim().toUpperCase();
@@ -167,11 +175,11 @@ export default function Home() {
   }
 
   // ── Results ───────────────────────────────────────────────────────────────
-  if (status === "done" && report && ticker) {
+  if (revealedReport && ticker) {
     return (
       <ResultsDashboard
         ticker={ticker}
-        report={report}
+        report={revealedReport}
         terminalEvents={stagesToEvents(stages)}
         confidence={parseConfidence(stages)}
         onBack={() => setTicker(null)}
@@ -180,7 +188,7 @@ export default function Home() {
   }
 
   // ── Loading ───────────────────────────────────────────────────────────────
-  if (status === "streaming" && ticker) {
+  if (isActive && ticker) {
     return (
       <div className="h-screen flex flex-col bg-background">
         <DashboardHeader query={ticker} onBack={() => setTicker(null)} status="processing">
@@ -205,7 +213,11 @@ export default function Home() {
           </Sheet>
         </DashboardHeader>
         <div className="flex-1 overflow-auto">
-          <LoadingSkeleton query={ticker} complete={stages.some((s) => s.stage === "approved")} />
+          <LoadingSkeleton
+            query={ticker}
+            complete={stages.some((s) => s.stage === "approved")}
+            illusionMessage={illusionMessage}
+          />
         </div>
       </div>
     );

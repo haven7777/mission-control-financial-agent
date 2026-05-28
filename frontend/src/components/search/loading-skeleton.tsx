@@ -8,6 +8,7 @@ import { Database, BarChart3, Users, AlertTriangle, CheckCircle2, Scale, FileTex
 interface LoadingSkeletonProps {
   query: string
   complete?: boolean
+  illusionMessage?: string
 }
 
 const agents = [
@@ -114,7 +115,7 @@ const ALL_COMPLETE = {
   transcript: { taskIndex: 3, complete: true },
 }
 
-export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProps) {
+export function LoadingSkeleton({ query, complete = false, illusionMessage }: LoadingSkeletonProps) {
   const [agentStates, setAgentStates] = useState<
     Record<string, { taskIndex: number; complete: boolean }>
   >({
@@ -320,16 +321,20 @@ export function LoadingSkeleton({ query, complete = false }: LoadingSkeletonProp
               <div className="w-2 h-2 rounded-full bg-primary animate-pulse mt-2" />
               <div className="flex-1">
                 <p className="text-sm text-muted-foreground font-mono">
-                  <StreamingText
-                    texts={[
-                      `Initializing analysis for ${query}...`,
-                      "Connecting to market data feeds...",
-                      "Running sentiment analysis algorithms...",
-                      "Cross-referencing historical patterns...",
-                      "Calculating risk metrics...",
-                      "Preparing comprehensive report...",
-                    ]}
-                  />
+                  {illusionMessage ? (
+                    <StreamingText texts={[illusionMessage]} key={illusionMessage} />
+                  ) : (
+                    <StreamingText
+                      texts={[
+                        `Initializing analysis for ${query}...`,
+                        "Connecting to market data feeds...",
+                        "Running sentiment analysis algorithms...",
+                        "Cross-referencing historical patterns...",
+                        "Calculating risk metrics...",
+                        "Preparing comprehensive report...",
+                      ]}
+                    />
+                  )}
                 </p>
               </div>
             </div>
