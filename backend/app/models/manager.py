@@ -35,12 +35,22 @@ class ManagerSynthesis(BaseModel):
         description="A single sentence capturing the headline view."
     )
     key_strengths: list[str] = Field(
-        min_length=1, max_length=5,
+        min_length=1, max_length=6,
         description="2-4 bullets, each one sentence, grounded in the supplied data/sentiment.",
     )
     key_risks: list[str] = Field(
-        min_length=1, max_length=5,
+        min_length=1, max_length=6,
         description="2-4 bullets, each one sentence, grounded in the supplied data/sentiment.",
+    )
+    deep_narrative: str | None = Field(
+        default=None,
+        description=(
+            "Three-paragraph institutional narrative. "
+            "Paragraph 1: SEC filing analysis with exact risk section names and financial metrics. "
+            "Paragraph 2: Exec quote analysis with evasion signal subtext. "
+            "Paragraph 3: Bull-vs-bear verdict with one key monitoring signal. "
+            "Omit entirely when filings_context or transcript_context is absent."
+        ),
     )
 
 
@@ -67,6 +77,9 @@ class FinalReport(BaseModel):
 
     # Earnings call transcript analysis (populated when FMP is configured)
     transcript_context: TranscriptContext | None = None
+
+    # Deep institutional narrative (populated when both filings and transcript are present)
+    deep_narrative: str | None = None
 
     # Grounding so consumers can drill down without a second request
     data_snapshot: DataAgentReport

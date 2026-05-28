@@ -143,6 +143,7 @@ def run_delta_refresh(cached: FinalReport) -> FinalReport:
         bear_case=cached.bear_case,
         filings_context=cached.filings_context,
         transcript_context=cached.transcript_context,
+        deep_narrative=cached.deep_narrative,
         data_snapshot=fresh_data,
         sentiment_snapshot=fresh_sentiment,
         model_used=cached.model_used,

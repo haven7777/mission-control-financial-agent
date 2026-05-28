@@ -45,8 +45,9 @@ SYSTEM_PROMPT = (
     "a JSON object matching this schema:\n"
     '  {"overall_view": "positive"|"negative"|"mixed"|"neutral",\n'
     '   "one_line_summary": "<one sentence>",\n'
-    '   "key_strengths": ["<sentence>", ...],   // 2-4 items\n'
-    '   "key_risks":     ["<sentence>", ...]}   // 2-4 items\n\n'
+    '   "key_strengths": ["<sentence>", ...],   // 2-6 items\n'
+    '   "key_risks":     ["<sentence>", ...],   // 2-6 items\n'
+    '   "deep_narrative": "<three paragraphs or null>"}  // null when filings or transcript absent\n\n'
     "Be balanced. Acknowledge uncertainty. If fundamentals and sentiment "
     "disagree, call that out explicitly. When a bull/bear debate is provided, "
     "engage with the strongest arguments from both sides in your strengths and "
@@ -66,6 +67,21 @@ SYSTEM_PROMPT = (
     "disruption or sentiment shocks for Israeli-headquartered firms — mention as a risk "
     "factor when the company is Israeli-domiciled. "
     "Apply these factors only when they are material and grounded in the supplied data."
+    "\n\n## Deep Narrative (deep_narrative field)\n\n"
+    "Generate deep_narrative ONLY when BOTH filings_context AND transcript_context are "
+    "non-empty in the inputs. If either is absent, set deep_narrative to null.\n\n"
+    "When generating deep_narrative, write EXACTLY three paragraphs separated by blank lines:\n\n"
+    "Paragraph 1 — SEC Filing Analysis: Quote the exact names of 2-3 risk factor section "
+    "headings from filings_context. Include specific financial metrics (revenue, margins, "
+    "debt ratios) drawn from the data. Explain why each risk is material to the investment thesis.\n\n"
+    "Paragraph 2 — Earnings Call Subtext: Quote at least one specific executive statement "
+    "verbatim from transcript_context. Analyse what each quote reveals through evasion signals, "
+    "hedging language, or conspicuous omissions. Be specific — name the question that was "
+    "dodged, if applicable.\n\n"
+    "Paragraph 3 — Verdict: State a clear bull-vs-bear conviction level (e.g., 'Cautiously "
+    "bullish'). Name the single most important forward indicator an investor should monitor. "
+    "Keep to 3-4 sentences.\n\n"
+    "Do not add headers inside deep_narrative. Prose only."
 )
 
 
@@ -314,6 +330,7 @@ def run_manager_agent(
         bear_case=bear_case,
         filings_context=filings_context,
         transcript_context=transcript_context,
+        deep_narrative=synthesis.deep_narrative,
     )
 
 
