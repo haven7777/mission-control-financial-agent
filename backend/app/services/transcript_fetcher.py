@@ -28,8 +28,8 @@ _QA_MARKERS = [
     r"questions?\s+and\s+answers?(?:\s+session)?",
     r"q\s*&\s*a(?:\s+session)?",
     r"question[\-\s]+and[\-\s]+answer(?:\s+session)?",
-    r"we\s+will\s+now\s+(?:open|begin|take)\s+(?:the\s+)?(?:floor\s+for\s+)?questions?",
-    r"operator:.*?(?:first|your\s+first)\s+question",
+    r"we\s+will\s+now\s+(?:open|begin|take)\s+(?:for\s+)?(?:the\s+)?(?:floor\s+for\s+)?questions?",
+    r"operator:\s+(?:.*?\s+)?(?:first|your\s+first)\s+question",
     r"turn\s+(?:it\s+)?(?:back\s+)?(?:over\s+)?(?:to\s+the\s+)?(?:for\s+)?questions?",
 ]
 
@@ -76,16 +76,21 @@ def get_latest_transcript(ticker: str) -> RawTranscript:
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
-    except httpx.TimeoutException as exc:
-        raise TranscriptFetchError(
-            f"Timeout fetching FMP transcript for {normalized}"
-        ) from exc
     except httpx.HTTPStatusError as exc:
         raise TranscriptFetchError(
             f"HTTP {exc.response.status_code} from FMP for {normalized}"
         ) from exc
+    except httpx.RequestError as exc:
+        raise TranscriptFetchError(
+            f"Network error fetching FMP transcript for {normalized}: {type(exc).__name__}"
+        ) from exc
 
-    data = resp.json()
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise TranscriptFetchError(
+            f"FMP returned non-JSON response for {normalized}"
+        ) from exc
 
     # FMP returns [] for unknown tickers, or a dict with "Error Message" on auth failures
     if isinstance(data, dict):
@@ -96,6 +101,8 @@ def get_latest_transcript(ticker: str) -> RawTranscript:
         raise TranscriptNotFoundError(f"No transcript found for {normalized!r}")
 
     entry = data[0]  # Most recent transcript (FMP returns newest first)
+    if not isinstance(entry, dict):
+        raise TranscriptNotFoundError(f"Unexpected FMP response format for {normalized!r}")
     content = entry.get("content", "")
     if not content:
         raise TranscriptNotFoundError(f"Empty transcript content for {normalized!r}")
