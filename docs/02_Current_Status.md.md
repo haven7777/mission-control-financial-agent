@@ -4,9 +4,22 @@
 # Current Status & Task Tracker
 
 ## 🎯 Current Focus
-**Phase 4A (Supabase Integration) is in progress.**
+**Phase 4B (SEC Filings RAG) is COMPLETE. Next: Phase 4C — Earnings Call Transcript analysis (or SaaS wrapper / deployment).**
 
 **Just Completed:**
+- Phase 4B end-to-end verification (2026-05-28)
+  - Full SSE stream for AAPL confirmed all stages: `cache_miss` → `started` → `filings_fetching` → `filings_complete` (SEC 10-Q, 5 excerpts) → `data_complete` → `sentiment_complete` → `debating` → `debate_complete` → `synthesizing` → `critiquing` → `revising` → `synthesizing` → `critiquing` → `approved` → `result`
+  - `result` event contains `filings_context` key with 5 `risk_factors` chunks (similarity 0.468–0.491) from AAPL Q2 2026 Form 10-Q
+  - No `stream_error` events; graceful degradation confirmed
+
+**Previously Completed:**
+- Phase 4B Task 1: BeautifulSoup4 + lxml dependencies for SEC filing HTML parsing
+  - `beautifulsoup4==4.12.3` and `lxml==5.2.2` added to `backend/requirements.txt` after `httpx==0.28.1`
+  - Both packages installed successfully into venv
+  - Import verification passed: `bs4` OK, `lxml` OK
+  - Commit: `462857f`
+
+**Previously Completed:**
 - Phase 4A Task 1: Supabase dependency + config scaffolding
   - `supabase==2.30.0` pinned in `requirements.txt`
   - `supabase_url`, `supabase_service_role_key`, `report_cache_ttl_hours` fields added to `Settings`
@@ -23,7 +36,7 @@
   - Future-proofed comment for Phase 4B pgvector semantic search column
   - Commit: `1a52f7b`
 
-**Next:** Phase 4A Task 2 (Supabase client initialization + report cache service)
+**Next:** Phase 4B Task 5 (HTML → plain text extraction using BeautifulSoup4 + lxml)
 
 ## 📋 Track 1: Near-Term Architecture Upgrades (Current Task)
 
@@ -271,7 +284,21 @@
 * [x] `/health` response + startup log include `supabase_cache: true/false`
 * [x] Frontend: `cache_hit` / `cache_miss` in `ProgressStage` → "Report Cache" agent, `approved` / `running` status
 * **To activate:** add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to `backend/.env`; run `backend/scripts/setup_supabase.sql` in Supabase SQL Editor
-* **Next:** Phase 4B — SEC Filings RAG (EDGAR 10-K/10-Q → pgvector embeddings → Manager Agent context)
+* * **Next:** Phase 4B Task 6 — embed chunks into pgvector (Supabase)
+
+### Phase 4B: SEC Filings RAG ✅ [COMPLETE — 2026-05-28]
+* [x] pgvector `filing_chunks` table + `match_filing_chunks` RPC deployed to Supabase
+* [x] `FilingChunk` / `FilingsContext` Pydantic models; `FinalReport.filings_context` field
+* [x] EDGAR service: ticker → CIK (company_tickers.json cache) → 10-K/10-Q primary doc HTML (commit `68c89a8`)
+* [x] Filing parser: BeautifulSoup + regex extraction of Risk Factors (Item 1A) + MD&A (Item 7/2) (commit `924de58`)
+* [x] Embeddings service: OpenAI `text-embedding-3-small` (1536-dim)
+* [x] Filing store: Supabase pgvector insert + `match_filing_chunks` RPC semantic search (commit `beeada6`)
+* [x] FilingsAgent: fetch → parse → embed → store → search; 30-day chunk cache; graceful degradation (commit `492a065`)
+* [x] Manager Agent: `_format_filings()` helper; `filings_context` param; SYSTEM_PROMPT updated
+* [x] Pipeline (streaming + sync): filings thread runs in parallel with data+sentiment; 3 new SSE stages
+* [x] Frontend: `filings_fetching` / `filings_complete` / `filings_unavailable` in ProgressStage; SEC Filings agent card in LoadingSkeleton
+* [x] End-to-end verified 2026-05-28: AAPL SSE stream produced all expected stages + `filings_context` with 5 risk_factors chunks (similarity 0.468–0.491) from Q2 2026 Form 10-Q; zero `stream_error` events
+* **Next:** Phase 4C — Earnings Call Transcript analysis (or SaaS wrapper / deployment)
 
 ### 🔴 Follow-up Items from History
 * **Security:** Rotate the Alpha Vantage API key that was briefly visible in httpx logs — generate a new one at alphavantage.co and replace the value in `backend/.env`.
