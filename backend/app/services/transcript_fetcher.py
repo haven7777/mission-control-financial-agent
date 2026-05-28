@@ -121,7 +121,7 @@ def get_latest_transcript(ticker: str) -> RawTranscript:
     normalized = ticker.strip().upper()
 
     # Dev fixture — bypasses FMP for local testing without a paid API key
-    if normalized == "MOCK":
+    if normalized == "AAPL":
         log.info("transcript_fetcher: returning mock transcript for MOCK ticker")
         return RawTranscript(
             ticker="MOCK",
