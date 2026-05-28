@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     groq_api_key: str | None = None
     tavily_api_key: str | None = None
+    fmp_api_key: str | None = None
 
     # LLM model selection
     groq_model: str = Field(
@@ -68,6 +69,11 @@ class Settings(BaseSettings):
     def supabase_configured(self) -> bool:
         """True iff both Supabase URL and service-role key are present."""
         return bool(self.supabase_url) and bool(self.supabase_service_role_key)
+
+    @property
+    def fmp_configured(self) -> bool:
+        """True iff an FMP API key is present."""
+        return bool(self.fmp_api_key)
 
 
 @lru_cache
