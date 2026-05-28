@@ -48,7 +48,7 @@ _INJECTION_RE = re.compile(
     r"(ignore\s+(?:previous|all|prior)(?:\s+(?:previous|all|prior))?\s+instructions"
     r"|you\s+are\s+now\s+(a|an)"
     r"|forget\s+(all|everything|previous)"
-    r"|jailbreak"
+    r"|\bjailbreak\b"
     r"|<\|.{0,50}\|>)",
     re.IGNORECASE | re.DOTALL,
 )
