@@ -20,8 +20,10 @@ import logging
 import re
 from collections.abc import Generator
 
-from fastapi import APIRouter, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
+
+from app.services.master_code_auth import require_master_code
 
 from app.agents.pipeline import run_full_analysis
 from app.agents.pipeline_stream import run_full_analysis_stream
@@ -43,6 +45,24 @@ log = logging.getLogger(__name__)
 
 _TICKER_PATTERN = re.compile(r"^[A-Z0-9.\-]{1,10}$")
 
+_INJECTION_RE = re.compile(
+    r"(ignore\s+(previous|all|prior)\s+instructions"
+    r"|you\s+are\s+now\s+(a|an)"
+    r"|forget\s+(all|everything|previous)"
+    r"|jailbreak"
+    r"|<\|.{0,50}\|>)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _check_injection(text: str) -> None:
+    """Raise 422 if text contains prompt injection patterns (defense-in-depth)."""
+    if _INJECTION_RE.search(text):
+        raise HTTPException(
+            status_code=422,
+            detail="Input contains disallowed content.",
+        )
+
 
 @router.get(
     "/analyze/{ticker}",
@@ -57,6 +77,7 @@ def analyze(
     normalized = ticker.upper()
     if not _TICKER_PATTERN.match(normalized):
         raise HTTPException(status_code=422, detail=f"Invalid ticker format: {ticker!r}")
+    _check_injection(normalized)
 
     # Check cache first — returns None when Supabase is not configured or cache is cold
     cached = get_cached_report(normalized)
@@ -99,6 +120,7 @@ def _sse_message(event: str, data: dict) -> str:
     "/analyze/{ticker}/stream",
     response_class=StreamingResponse,
     summary="Stream agent-progress events then the final report via SSE",
+    dependencies=[Depends(require_master_code)],
 )
 @limiter.limit("5/minute")
 def analyze_stream(
@@ -108,6 +130,7 @@ def analyze_stream(
     normalized = ticker.upper()
     if not _TICKER_PATTERN.match(normalized):
         raise HTTPException(status_code=422, detail=f"Invalid ticker format: {ticker!r}")
+    _check_injection(normalized)
 
     def _generate() -> Generator[str, None, None]:
         for event_dict in run_full_analysis_stream(normalized):
