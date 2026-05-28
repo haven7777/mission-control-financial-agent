@@ -7,6 +7,9 @@ from app.services.embeddings import embed_batch
 _TICKER = "_TESTFIL"
 
 def _cleanup():
+    from app.config import get_settings
+    if not get_settings().supabase_configured:
+        return
     from app.services.supabase_client import get_supabase_client
     get_supabase_client().table("filing_chunks").delete().eq("ticker", _TICKER).execute()
 

@@ -40,7 +40,7 @@ def chunks_exist(ticker: str) -> bool:
         )
         return bool(result.data)
     except Exception as exc:  # noqa: BLE001
-        log.info("filing_store: chunks_exist check failed for %s: %s", ticker, exc)
+        log.warning("filing_store: chunks_exist check failed for %s: %s", ticker, exc)
         return False
 
 
@@ -55,6 +55,9 @@ def store_chunks(
     """Insert text chunks + embeddings into filing_chunks. Non-fatal on error."""
     settings = get_settings()
     if not settings.supabase_configured or not chunks:
+        return
+    if len(chunks) != len(embeddings):
+        log.warning("filing_store: chunks/embeddings length mismatch for %s/%s (%d vs %d), skipping", ticker, section, len(chunks), len(embeddings))
         return
     try:
         rows = [
