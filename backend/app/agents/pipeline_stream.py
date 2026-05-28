@@ -160,6 +160,7 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
             return
 
         elif tag == "filings_err":
+            log.warning("pipeline_stream: filings_err — %s", value)
             filings_context = FilingsContext(ticker=normalized, form_type="10-K", chunks=[], is_empty=True)
             remaining -= 1
             yield _progress("filings_unavailable", "SEC filing retrieval failed — continuing without filing context")
