@@ -65,8 +65,20 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         yield _progress("cache_hit", f"Cache hit from {age_minutes}m ago — refreshing live data…")
         yield _progress("delta_refreshing", "Fetching live price and scanning recent news…")
 
-        try:
-            refreshed = run_delta_refresh(cached)
+        refreshed_holder: list[FinalReport] = []
+
+        def _do_delta() -> None:
+            try:
+                refreshed_holder.append(run_delta_refresh(cached))
+            except Exception as exc:  # noqa: BLE001
+                log.warning("pipeline_stream: delta refresh failed: %s", exc)
+
+        _delta_thread = threading.Thread(target=_do_delta, daemon=True)
+        _delta_thread.start()
+        _delta_thread.join(timeout=25)
+
+        if refreshed_holder:
+            refreshed = refreshed_holder[0]
             n_new = refreshed.sentiment_snapshot.articles_analyzed
             old_n = cached.sentiment_snapshot.articles_analyzed
             if n_new != old_n:
@@ -76,8 +88,7 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
                 )
             else:
                 yield _progress("delta_complete", "Live price refreshed — no new developments found")
-        except Exception as exc:  # noqa: BLE001
-            log.warning("pipeline_stream: delta refresh failed: %s", exc)
+        else:
             refreshed = cached
             yield _progress("delta_complete", "Delta refresh unavailable — serving cached analysis")
 

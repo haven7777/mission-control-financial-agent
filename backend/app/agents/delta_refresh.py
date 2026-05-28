@@ -147,4 +147,5 @@ def run_delta_refresh(cached: FinalReport) -> FinalReport:
         sentiment_snapshot=fresh_sentiment,
         model_used=cached.model_used,
         delta_refreshed=True,
+        generated_at=cached.generated_at,
     )
