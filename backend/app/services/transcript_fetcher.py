@@ -50,14 +50,87 @@ class RawTranscript(TypedDict):
     content: str
 
 
+_MOCK_TRANSCRIPT = """
+Operator:
+Your first question comes from Sarah Chen at Goldman Sachs.
+
+Sarah Chen (Goldman Sachs): Thank you. I want to ask directly about gross margin compression.
+Gross margins came in at 38.2%, down 310 basis points year-over-year. Can you walk us through
+the specific drivers and give us a framework for when we should expect margins to recover to
+the 41-42% range you guided to earlier this year?
+
+CEO: Sarah, great question. We feel really, really good about the underlying health of our
+business. The team has done a fantastic job navigating a complex macro environment and I think
+what we're seeing is really a reflection of our continued investment in growth. We remain very
+committed to long-term margin expansion and we'll provide more color at our investor day.
+
+CFO: I'd just add that we're very focused on operational efficiency across the organization.
+
+Sarah Chen (Goldman Sachs): I appreciate that, but to be clear — you're not providing a
+specific timeline for margin recovery?
+
+CEO: We feel very good about the long-term trajectory here and we'll have more to say soon.
+
+Operator:
+Your next question comes from David Park at Morgan Stanley.
+
+David Park (Morgan Stanley): Can you give us the exact revenue contribution from your
+enterprise segment versus consumer, and how the mix shift is affecting margins?
+
+CFO: What I can tell you is that both segments are performing in line with our expectations.
+We're really pleased with the engagement metrics we're seeing across both cohorts. In terms
+of forward guidance, we expect total revenue of $2.1 to $2.3 billion next quarter, with
+continued investment in our go-to-market motion to accelerate enterprise adoption. We're
+also targeting 15% headcount reduction in non-core functions to improve operating leverage.
+
+David Park (Morgan Stanley): But the segment-level breakdown — can you give us that?
+
+CFO: We don't break out segment-level revenue at this time. We think that's competitively
+sensitive information. What I will say is that the mix is evolving favorably and we expect
+to share more in Q3.
+
+Operator:
+Your next question is from Lisa Wong at Citi.
+
+Lisa Wong (Citi): Hi, thanks. Two questions. First, can you quantify the FX headwind to
+revenue? And second, inventory levels look elevated — should we expect a write-down?
+
+CFO: On FX, we saw roughly a $40 million headwind in the quarter, which was consistent with
+our internal planning. On inventory, we believe we're well-positioned. We've been very
+proactive about managing supply chain dynamics and we feel good about the quality of our
+inventory.
+
+Lisa Wong (Citi): So no write-down expected?
+
+CFO: We evaluate inventory on an ongoing basis and we'll communicate any material developments
+through the appropriate channels. I'd also highlight that we're on track to achieve $500 million
+in annualized cost savings by end of fiscal year, and we see a clear path to free cash flow
+positivity by Q2 of next fiscal year.
+"""
+
+
 def get_latest_transcript(ticker: str) -> RawTranscript:
     """Fetch the most recent earnings call transcript for ticker from FMP.
 
     Raises TranscriptNotFoundError if FMP has no transcript for the ticker.
     Raises TranscriptFetchError on network / HTTP failures.
+
+    Special case: ticker "MOCK" returns a hardcoded dev fixture bypassing FMP.
     """
     settings = get_settings()
     normalized = ticker.strip().upper()
+
+    # Dev fixture — bypasses FMP for local testing without a paid API key
+    if normalized == "MOCK":
+        log.info("transcript_fetcher: returning mock transcript for MOCK ticker")
+        return RawTranscript(
+            ticker="MOCK",
+            quarter=2,
+            year=2026,
+            date="2026-05-15 22:00:00",
+            content=_MOCK_TRANSCRIPT.strip(),
+        )
+
     api_key = settings.fmp_api_key
 
     if not api_key:
