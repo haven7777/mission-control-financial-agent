@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Search, TrendingUp, Cpu, Rocket, Zap, ChevronRight, Sparkles } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { fetchQuote } from "@/lib/api"
 
 export type ResearchMode = "fast" | "deep";
 
@@ -15,13 +16,21 @@ interface SearchHomeProps {
 }
 
 const popularStocks = [
-  { symbol: "NVDA", name: "NVIDIA Corp", change: "+3.2%" },
-  { symbol: "AAPL", name: "Apple Inc", change: "+1.1%" },
-  { symbol: "MSFT", name: "Microsoft", change: "+0.8%" },
-  { symbol: "GOOGL", name: "Alphabet", change: "+2.4%" },
-  { symbol: "TSLA", name: "Tesla Inc", change: "-1.2%" },
-  { symbol: "AMZN", name: "Amazon", change: "+1.8%" },
+  { symbol: "NVDA", name: "NVIDIA Corp" },
+  { symbol: "AAPL", name: "Apple Inc" },
+  { symbol: "MSFT", name: "Microsoft" },
+  { symbol: "GOOGL", name: "Alphabet" },
+  { symbol: "TSLA", name: "Tesla Inc" },
+  { symbol: "AMZN", name: "Amazon" },
 ]
+
+function formatChangePct(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined) return "—"
+  const n = typeof raw === "number" ? raw : parseFloat(raw)
+  if (isNaN(n)) return "—"
+  const sign = n >= 0 ? "+" : ""
+  return `${sign}${n.toFixed(1)}%`
+}
 
 const categories = [
   {
@@ -61,10 +70,30 @@ const categories = [
 export function SearchHome({ onSearch, mode, onModeChange, credits }: SearchHomeProps) {
   const [query, setQuery] = useState("")
   const [isFocused, setIsFocused] = useState(false)
+  const [livePcts, setLivePcts] = useState<Record<string, string>>({})
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  // Live-fetch popular-stock percentages every page load (no cache).
+  useEffect(() => {
+    let cancelled = false
+    popularStocks.forEach((s) => {
+      fetchQuote(s.symbol)
+        .then((q) => {
+          if (cancelled) return
+          setLivePcts((prev) => ({
+            ...prev,
+            [s.symbol]: formatChangePct(q.change_percent as unknown as string),
+          }))
+        })
+        .catch(() => {
+          /* leave as "—" if individual quote fails */
+        })
+    })
+    return () => { cancelled = true }
   }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -91,6 +120,9 @@ export function SearchHome({ onSearch, mode, onModeChange, credits }: SearchHome
           s.name.toLowerCase().includes(query.toLowerCase())
       )
     : []
+
+  const pctClass = (raw: string) =>
+    raw === "—" ? "text-muted-foreground" : raw.startsWith("+") ? "text-success" : "text-destructive"
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-12">
@@ -208,13 +240,8 @@ export function SearchHome({ onSearch, mode, onModeChange, credits }: SearchHome
                     </span>
                     <span className="text-muted-foreground">{stock.name}</span>
                   </div>
-                  <span
-                    className={cn(
-                      "font-mono text-sm",
-                      stock.change.startsWith("+") ? "text-success" : "text-destructive"
-                    )}
-                  >
-                    {stock.change}
+                  <span className={cn("font-mono text-sm", pctClass(livePcts[stock.symbol] ?? "—"))}>
+                    {livePcts[stock.symbol] ?? "—"}
                   </span>
                 </button>
               ))}
@@ -243,13 +270,8 @@ export function SearchHome({ onSearch, mode, onModeChange, credits }: SearchHome
               <span className="font-mono font-semibold text-foreground text-sm">
                 {stock.symbol}
               </span>
-              <span
-                className={cn(
-                  "font-mono text-xs",
-                  stock.change.startsWith("+") ? "text-success" : "text-destructive"
-                )}
-              >
-                {stock.change}
+              <span className={cn("font-mono text-xs", pctClass(livePcts[stock.symbol] ?? "—"))}>
+                {livePcts[stock.symbol] ?? "—"}
               </span>
             </button>
           ))}

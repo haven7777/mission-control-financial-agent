@@ -1,27 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const CREDITS_KEY = "fast_credits";
 const USED_VIP_KEY = "used_vip_codes";
 export const INITIAL_CREDITS = 3;
 
 export function useCredits() {
-  const [credits, setCredits] = useState<number>(() => {
-    if (typeof window === "undefined") return INITIAL_CREDITS;
-    const raw = localStorage.getItem(CREDITS_KEY);
-    return raw !== null ? Math.max(0, parseInt(raw, 10)) : INITIAL_CREDITS;
-  });
+  // Server + first client render must agree → start from defaults.
+  // localStorage is read in useEffect after hydration completes.
+  const [credits, setCredits] = useState<number>(INITIAL_CREDITS);
+  const [usedVipCodes, setUsedVipCodes] = useState<string[]>([]);
 
-  const [usedVipCodes, setUsedVipCodes] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = localStorage.getItem(USED_VIP_KEY);
-      return raw ? (JSON.parse(raw) as string[]) : [];
-    } catch {
-      return [];
+  useEffect(() => {
+    const rawCredits = localStorage.getItem(CREDITS_KEY);
+    if (rawCredits !== null) {
+      setCredits(Math.max(0, parseInt(rawCredits, 10)));
     }
-  });
+    try {
+      const rawVip = localStorage.getItem(USED_VIP_KEY);
+      if (rawVip) setUsedVipCodes(JSON.parse(rawVip) as string[]);
+    } catch {
+      // ignore malformed storage
+    }
+  }, []);
 
   function consumeCredit(): void {
     setCredits((prev) => {
