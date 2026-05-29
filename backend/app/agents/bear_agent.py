@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.models.agents import DataAgentReport
 from app.models.debate import BearCase
 from app.models.sentiment import SentimentAgentReport
+from app.utils.sanitize import sanitize_bear_thesis
 
 log = logging.getLogger(__name__)
 
@@ -36,10 +37,17 @@ _SYSTEM_PROMPT = (
     "from the context.\n"
     "2. Highlight overvaluation signals, downside risks, and negative momentum.\n"
     "3. If news sentiment is unavailable, focus entirely on fundamental risks.\n\n"
+    "## thesis field\n"
+    "Write a cohesive FUTURE-FACING narrative paragraph of 3-4 sentences about the NEXT 12-24 MONTHS. "
+    "Focus on structural vulnerabilities, upcoming risk catalysts, and market psychology. "
+    "Use forward-looking language: 'vulnerable to future shifts in', 'at risk of deteriorating', "
+    "'faces increasing pressure from', 'over the next 12 months'. "
+    "CRITICAL: Do NOT include bullet points, numbered lists, or mathematical breakdowns — "
+    "flowing prose only. Do NOT describe the current 52-week price range. "
+    "Do NOT simply restate the same data points from key_arguments — analyze what they imply for the future.\n\n"
     "Respond as a JSON object matching this exact schema:\n"
-    '{"ticker": "<TICKER>", "thesis": "<one bold bearish paragraph>", '
-    '"key_arguments": ["<grounded argument>", ...]}\n'
-    "Include 2-5 key_arguments."
+    '{"ticker": "<TICKER>", '
+    '"thesis": "<cohesive 3-4 sentence forward-looking narrative — NO bullets>"}'
 )
 
 
@@ -70,6 +78,11 @@ def run_bear_agent(
     except Exception as exc:
         log.error("bear_agent: LLM call failed for %s: %s", data.ticker, exc)
         raise BearAgentError(f"Failed to generate bear case for {data.ticker}") from exc
+
+    clean_thesis = sanitize_bear_thesis(result.thesis)
+    if clean_thesis != result.thesis:
+        log.debug("bear_agent: sanitized thesis for %s (stripped trailing bullets)", data.ticker)
+        result = result.model_copy(update={"thesis": clean_thesis})
     return result
 
 

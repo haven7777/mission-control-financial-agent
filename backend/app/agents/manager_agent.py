@@ -27,6 +27,7 @@ from app.models.filings import FilingsContext
 from app.models.transcript import TranscriptContext
 from app.models.manager import FinalReport, ManagerSynthesis
 from app.models.sentiment import SentimentAgentReport
+from app.utils.sanitize import sanitize_bull_thesis, sanitize_bear_thesis
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +52,44 @@ SYSTEM_PROMPT = (
     '   "executive_summary": "<3-4 sentence paragraph or null>"}  // executive_summary null in FAST mode\n\n'
     "Be balanced. Acknowledge uncertainty. If fundamentals and sentiment "
     "disagree, call that out explicitly. When a bull/bear debate is provided, "
-    "engage with the strongest arguments from both sides in your strengths and "
-    "risks. Each bullet must be grounded in the supplied data. Do not invent facts.\n\n"
+    "use it to calibrate your overall_view and one_line_summary — do NOT copy "
+    "bull/bear arguments into key_strengths or key_risks. Each field has a "
+    "distinct structural role (see Section Separation Rules below). "
+    "Do not invent facts.\n\n"
+    "## Section Separation Rules\n\n"
+    "The report has four structurally distinct sections. Writing the same content in two sections "
+    "is a critical failure. Each section has one job:\n\n"
+    "  key_strengths / key_risks — CURRENT FACTS ONLY\n"
+    "    Terse, present-tense data snapshots: specific percentages, named ratios, product lines, "
+    "SEC section headings, balance sheet figures. One fact per bullet. "
+    "NEVER use forward-looking language ('could', 'may', 'if', 'expected'). "
+    "NEVER restate or paraphrase content from bull_case or bear_case. "
+    "Example of correct: 'Revenue growth YoY: 23.6%' or 'Debt/equity: 0.42'. "
+    "Example of wrong: 'Strong revenue growth positions the company to capitalize on demand' "
+    "(that belongs in the bull thesis, not here).\n\n"
+    "  bull_case.thesis / bear_case.thesis — FUTURE-FACING NARRATIVE ONLY\n"
+    "    Strategic investment story focused on the NEXT 12-24 MONTHS. Flowing prose only — "
+    "no bullet points, dashes, numbered lists, or mathematical breakdowns anywhere in the text. "
+    "Use forward-looking language: 'expected to capitalize on', 'positioned to benefit from', "
+    "'vulnerable to future shifts in', 'strategic momentum toward', 'over the next 12 months'. "
+    "CRITICAL: Do NOT repeat exact data points already listed in key_strengths or key_risks. "
+    "Instead, ANALYZE what those data points mean for the future. "
+    "Do NOT describe the 52-week price range or recent price history — the user sees that in the data panel. "
+    "A reader should finish the thesis understanding the FUTURE investment story, not the current data.\n\n"
+    "  ENFORCEMENT: Before finalising, scan your output. If any sentence or data point appears "
+    "in both the bullet sections and the narrative sections, delete it from the narrative and "
+    "replace it with forward-looking analysis of what that fact implies.\n\n"
+    "## Anti-Contradiction Guardrail\n\n"
+    "Each specific financial metric belongs to either the bull OR the bear case — not both — "
+    "unless you supply explicit qualifying context for the duality.\n\n"
+    "  Rule: If you cite a metric (P/E, Debt/Equity, operating margin, free cash flow, revenue growth, "
+    "gross margin) in key_risks or the bear_case, you CANNOT also cite it in key_strengths or the "
+    "bull_case without a specific qualifying phrase — for example: 'P/E is elevated at 35x but "
+    "compressing toward sector median as earnings accelerate' is legitimate dual-use. Simply citing "
+    "the same P/E as both a risk AND a strength with no qualification is a logical contradiction "
+    "and a report failure.\n\n"
+    "  Rule: Pick a side for each metric based on industry averages and the supplied context. "
+    "If a metric is genuinely ambiguous, acknowledge the ambiguity in ONE section only, then move on.\n\n"
     "## overall_view Selection Rules\n\n"
     "Do NOT default to 'mixed' out of laziness simply because a stock has standard "
     "pros and cons — every stock does. Weigh the evidence and take a definitive stance "
@@ -300,13 +337,9 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
     )
 
     if state.bull_case and state.bear_case:
-        bull_args = "\n".join(f"  • {a}" for a in state.bull_case.key_arguments)
-        bear_args = "\n".join(f"  • {a}" for a in state.bear_case.key_arguments)
         user_payload += (
-            f"\n\nBULL CASE (strongest upside arguments):\n"
-            f"Thesis: {state.bull_case.thesis}\n{bull_args}"
-            f"\n\nBEAR CASE (strongest downside arguments):\n"
-            f"Thesis: {state.bear_case.thesis}\n{bear_args}"
+            f"\n\nBULL CASE:\n{state.bull_case.thesis}"
+            f"\n\nBEAR CASE:\n{state.bear_case.thesis}"
             f"\n\nWeigh the bull and bear cases above when forming your final view."
         )
 
@@ -392,6 +425,18 @@ def run_manager_agent(
 
     settings = get_settings()
     model_used = settings.openai_deep_model if is_deep_mode else settings.openai_model
+
+    # Strip any bullet lists the LLM appended to prose-only narrative fields.
+    # This is a hard architectural guarantee — prompts alone cannot be trusted.
+    clean_bull = (
+        bull_case.model_copy(update={"thesis": sanitize_bull_thesis(bull_case.thesis)})
+        if bull_case else None
+    )
+    clean_bear = (
+        bear_case.model_copy(update={"thesis": sanitize_bear_thesis(bear_case.thesis)})
+        if bear_case else None
+    )
+
     return FinalReport(
         ticker=data.ticker,
         company_name=data.overview.name,
@@ -402,8 +447,8 @@ def run_manager_agent(
         data_snapshot=data,
         sentiment_snapshot=sentiment,
         model_used=model_used,
-        bull_case=bull_case,
-        bear_case=bear_case,
+        bull_case=clean_bull,
+        bear_case=clean_bear,
         filings_context=filings_context,
         transcript_context=transcript_context,
         deep_narrative=synthesis.deep_narrative,

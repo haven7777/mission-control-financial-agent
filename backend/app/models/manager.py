@@ -36,11 +36,23 @@ class ManagerSynthesis(BaseModel):
     )
     key_strengths: list[str] = Field(
         min_length=1, max_length=6,
-        description="2-6 bullets, each one sentence, grounded in the supplied data/sentiment.",
+        description=(
+            "2-6 rapid-fire CURRENT FACTS only. Each item: one terse present-tense data point — "
+            "a specific margin percentage, named product, concrete metric, or SEC-cited strength. "
+            "No forward-looking language. No narrative. No repetition of bull_case content. "
+            "Anti-contradiction: each metric cited here must NOT also appear in key_risks "
+            "unless an explicit qualifying context is provided (e.g., 'high but improving')."
+        ),
     )
     key_risks: list[str] = Field(
         min_length=1, max_length=6,
-        description="2-6 bullets, each one sentence, grounded in the supplied data/sentiment.",
+        description=(
+            "2-6 rapid-fire CURRENT FACTS only. Each item: one terse present-tense data point — "
+            "a specific risk ratio, named SEC warning, concrete operational weakness, or cited metric. "
+            "No forward-looking language. No narrative. No repetition of bear_case content. "
+            "Anti-contradiction: each metric cited here must NOT also appear in key_strengths "
+            "unless an explicit qualifying context is provided (e.g., 'elevated but declining')."
+        ),
     )
     deep_narrative: str | None = Field(
         default=None,

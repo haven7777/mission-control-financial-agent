@@ -78,13 +78,11 @@ export type OverallView = "positive" | "negative" | "mixed" | "neutral";
 export type BullCase = {
   ticker: string;
   thesis: string;
-  key_arguments: string[];
 };
 
 export type BearCase = {
   ticker: string;
   thesis: string;
-  key_arguments: string[];
 };
 
 export interface FilingChunk {

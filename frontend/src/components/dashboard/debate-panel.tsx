@@ -17,17 +17,9 @@ export function DebatePanel({ bull_case, bear_case }: DebatePanelProps) {
           <TrendingUp className="w-5 h-5" />
           Bull Case
         </h3>
-        <p className="text-sm text-foreground/80 leading-relaxed mb-5 italic">
+        <p className="text-sm text-foreground/80 leading-relaxed italic">
           &ldquo;{bull_case.thesis}&rdquo;
         </p>
-        <ul className="space-y-3">
-          {bull_case.key_arguments.map((arg) => (
-            <li key={arg} className="flex items-start gap-3 text-sm text-foreground/90">
-              <span className="text-success font-bold mt-0.5 shrink-0">+</span>
-              <span className="leading-relaxed">{arg}</span>
-            </li>
-          ))}
-        </ul>
       </div>
 
       {/* Bear Case */}
@@ -36,17 +28,9 @@ export function DebatePanel({ bull_case, bear_case }: DebatePanelProps) {
           <TrendingDown className="w-5 h-5" />
           Bear Case
         </h3>
-        <p className="text-sm text-foreground/80 leading-relaxed mb-5 italic">
+        <p className="text-sm text-foreground/80 leading-relaxed italic">
           &ldquo;{bear_case.thesis}&rdquo;
         </p>
-        <ul className="space-y-3">
-          {bear_case.key_arguments.map((arg) => (
-            <li key={arg} className="flex items-start gap-3 text-sm text-foreground/90">
-              <span className="text-destructive font-bold mt-0.5 shrink-0">−</span>
-              <span className="leading-relaxed">{arg}</span>
-            </li>
-          ))}
-        </ul>
       </div>
     </div>
   )

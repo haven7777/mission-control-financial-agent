@@ -10,6 +10,7 @@ import { MasterCodeDialog } from "@/components/search/master-code-dialog";
 import { PaywallModal } from "@/components/search/paywall-modal";
 import { useCredits } from "@/hooks/use-credits";
 import { LoadingSkeleton } from "@/components/search/loading-skeleton";
+import { FastLoading } from "@/components/search/fast-loading";
 import {
   Sheet,
   SheetContent,
@@ -344,12 +345,7 @@ export default function Home() {
               illusionMessage={illusionMessage}
             />
           ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-3">
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-muted-foreground text-sm">Fast analysis for {ticker}…</p>
-              </div>
-            </div>
+            <FastLoading ticker={ticker} />
           )}
         </div>
       </div>

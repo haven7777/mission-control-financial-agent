@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.models.agents import DataAgentReport
 from app.models.debate import BullCase
 from app.models.sentiment import SentimentAgentReport
+from app.utils.sanitize import sanitize_bull_thesis
 
 log = logging.getLogger(__name__)
 
@@ -37,10 +38,17 @@ _SYSTEM_PROMPT = (
     "from the context.\n"
     "2. Highlight undervaluation, growth catalysts, and positive momentum.\n"
     "3. If news sentiment is unavailable, focus entirely on fundamentals.\n\n"
+    "## thesis field\n"
+    "Write a cohesive FUTURE-FACING narrative paragraph of 3-4 sentences about the NEXT 12-24 MONTHS. "
+    "Focus on strategic positioning, upcoming catalysts, and market psychology. "
+    "Use forward-looking language: 'expected to capitalize on', 'positioned to benefit from', "
+    "'over the next 12 months'. "
+    "CRITICAL: Do NOT include bullet points, numbered lists, or mathematical breakdowns — "
+    "flowing prose only. Do NOT describe the current 52-week price range. "
+    "Do NOT simply restate the same data points from key_arguments — analyze what they imply for the future.\n\n"
     "Respond as a JSON object matching this exact schema:\n"
-    '{"ticker": "<TICKER>", "thesis": "<one bold bullish paragraph>", '
-    '"key_arguments": ["<grounded argument>", ...]}\n'
-    "Include 2-5 key_arguments."
+    '{"ticker": "<TICKER>", '
+    '"thesis": "<cohesive 3-4 sentence forward-looking narrative — NO bullets>"}'
 )
 
 
@@ -71,6 +79,11 @@ def run_bull_agent(
     except Exception as exc:
         log.error("bull_agent: LLM call failed for %s: %s", data.ticker, exc)
         raise BullAgentError(f"Failed to generate bull case for {data.ticker}") from exc
+
+    clean_thesis = sanitize_bull_thesis(result.thesis)
+    if clean_thesis != result.thesis:
+        log.debug("bull_agent: sanitized thesis for %s (stripped trailing bullets)", data.ticker)
+        result = result.model_copy(update={"thesis": clean_thesis})
     return result
 
 
