@@ -22,9 +22,10 @@ function toDisplaySentiment(view: OverallView): DisplaySentiment {
 interface SynthesisConsoleProps {
   report: FinalReport
   confidence: number
+  executiveSummary?: string | null
 }
 
-export function SynthesisConsole({ report, confidence }: SynthesisConsoleProps) {
+export function SynthesisConsole({ report, confidence, executiveSummary }: SynthesisConsoleProps) {
   const [animatedConfidence, setAnimatedConfidence] = useState(0)
   const sentiment = toDisplaySentiment(report.overall_view)
 
@@ -94,14 +95,14 @@ export function SynthesisConsole({ report, confidence }: SynthesisConsoleProps) 
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger className="text-sm text-muted-foreground mt-1 cursor-help underline decoration-dotted underline-offset-2">
-                  Confidence
+                  Signal Strength
                 </TooltipTrigger>
                 <TooltipContent
                   side="bottom"
                   sideOffset={13}
                   className="max-w-[280px] text-center text-sm px-4 py-2.5 rounded-xl bg-card border border-primary/30 text-muted-foreground shadow-lg shadow-primary/10 leading-relaxed"
                 >
-                  Indicates the system&apos;s confidence in the accuracy and factual consistency of this report.
+                  Reflects the quality and quantity of financial sources scanned — not directional certainty. High scores mean authoritative, relevant coverage was found.
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -115,6 +116,11 @@ export function SynthesisConsole({ report, confidence }: SynthesisConsoleProps) 
             <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Executive Summary</span>
           </div>
           <p className="text-foreground text-lg leading-relaxed">{report.one_line_summary}</p>
+          {executiveSummary && (
+            <p className="text-sm text-muted-foreground/80 leading-relaxed mt-3 italic border-l-2 border-primary/30 pl-3">
+              {executiveSummary}
+            </p>
+          )}
         </div>
       </div>
 

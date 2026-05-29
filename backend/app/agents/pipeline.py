@@ -252,3 +252,57 @@ def run_full_analysis(ticker: str) -> FinalReport:
     if final is None:
         raise RuntimeError("Pipeline finished with no FinalReport in state")
     return final
+
+
+def run_fast_analysis(ticker: str) -> FinalReport:
+    """Lean pipeline: Data + Sentiment + Manager only. No filings/transcript/debate/critic.
+    Target wall-clock time: 2-8s.
+    """
+    normalized = ticker.strip().upper()
+    if not normalized:
+        raise ValueError("ticker must be non-empty")
+
+    data_report: DataAgentReport | None = None
+    sentiment_report: SentimentAgentReport | None = None
+    data_exc: BaseException | None = None
+    sentiment_exc: BaseException | None = None
+
+    def _fetch_data() -> None:
+        nonlocal data_report, data_exc
+        try:
+            data_report = run_data_agent(normalized)
+        except Exception as exc:  # noqa: BLE001
+            data_exc = exc
+
+    def _fetch_sentiment() -> None:
+        nonlocal sentiment_report, sentiment_exc
+        try:
+            sentiment_report = run_sentiment_agent(normalized)
+        except NoArticlesFoundError:
+            sentiment_report = SentimentAgentReport(
+                ticker=normalized,
+                query="N/A",
+                articles_analyzed=0,
+                overall_sentiment=Sentiment.NEUTRAL,
+                overall_confidence=0.0,
+                classified=[],
+                is_zero_news=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            sentiment_exc = exc
+
+    t1 = threading.Thread(target=_fetch_data, daemon=True)
+    t2 = threading.Thread(target=_fetch_sentiment, daemon=True)
+    t1.start()
+    t2.start()
+    t1.join(timeout=30)
+    t2.join(timeout=30)
+
+    if data_exc:
+        raise data_exc
+    if sentiment_exc:
+        raise sentiment_exc
+    if data_report is None or sentiment_report is None:
+        raise RuntimeError("Fast pipeline: data or sentiment agent timed out")
+
+    return run_manager_agent(data_report, sentiment_report, is_deep_mode=False)

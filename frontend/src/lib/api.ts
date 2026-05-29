@@ -130,6 +130,7 @@ export type FinalReport = {
   filings_context: FilingsContext | null;
   transcript_context: TranscriptContext | null;
   deep_narrative: string | null;
+  executive_summary: string | null;
   data_snapshot: DataAgentReport;
   sentiment_snapshot: SentimentAgentReport;
   model_used: string;
@@ -155,9 +156,10 @@ export { ApiFetchError as QuoteFetchError };
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-async function _getJson<T>(path: string): Promise<T> {
+async function _getJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { Accept: "application/json" },
+    ...init,
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as
@@ -180,7 +182,9 @@ export function fetchQuote(ticker: string): Promise<StockQuote> {
 export function fetchAnalysis(ticker: string): Promise<FinalReport> {
   const trimmed = ticker.trim();
   if (!trimmed) throw new ApiFetchError(400, "Empty ticker.");
-  return _getJson<FinalReport>(`/api/analyze/${encodeURIComponent(trimmed)}`);
+  return _getJson<FinalReport>(`/api/analyze/${encodeURIComponent(trimmed)}`, {
+    cache: "no-store",
+  });
 }
 
 /** Validate a Master Code against the backend. Returns true if valid. */

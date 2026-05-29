@@ -52,6 +52,14 @@ class ManagerSynthesis(BaseModel):
             "Omit entirely when filings_context or transcript_context is absent."
         ),
     )
+    executive_summary: str | None = Field(
+        default=None,
+        description=(
+            "A dense, comprehensive institutional executive summary consisting of exactly "
+            "3 to 4 detailed sentences. Must be at least 70 words. "
+            "Generated ONLY when RESEARCH_MODE is DEEP. Null in FAST mode."
+        ),
+    )
 
 
 class FinalReport(BaseModel):
@@ -80,6 +88,9 @@ class FinalReport(BaseModel):
 
     # Deep institutional narrative (populated when both filings and transcript are present)
     deep_narrative: str | None = None
+
+    # Dense investment thesis paragraph — Deep mode only
+    executive_summary: str | None = None
 
     # Grounding so consumers can drill down without a second request
     data_snapshot: DataAgentReport

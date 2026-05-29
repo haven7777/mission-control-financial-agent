@@ -11,6 +11,7 @@ interface SearchHomeProps {
   onSearch: (query: string) => void;
   mode: ResearchMode;
   onModeChange: (mode: ResearchMode) => void;
+  credits?: number;
 }
 
 const popularStocks = [
@@ -57,7 +58,7 @@ const categories = [
   },
 ]
 
-export function SearchHome({ onSearch, mode, onModeChange }: SearchHomeProps) {
+export function SearchHome({ onSearch, mode, onModeChange, credits }: SearchHomeProps) {
   const [query, setQuery] = useState("")
   const [isFocused, setIsFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -78,7 +79,9 @@ export function SearchHome({ onSearch, mode, onModeChange }: SearchHomeProps) {
   }
 
   const handleCategoryClick = (category: typeof categories[0]) => {
-    onSearch(category.stocks.join(", "))
+    const ticker = category.stocks[Math.floor(Math.random() * category.stocks.length)]
+    setQuery(ticker)
+    onSearch(ticker)
   }
 
   const filteredStocks = query
@@ -134,8 +137,16 @@ export function SearchHome({ onSearch, mode, onModeChange }: SearchHomeProps) {
         >
           <Sparkles className="w-4 h-4" />
           Deep Research
-          {mode === "deep" && (
-            <span className="text-xs opacity-75 font-mono">PRO</span>
+          {credits !== undefined && (
+            <span className={cn(
+              "text-xs font-mono px-1.5 py-0.5 rounded-md",
+              credits > 0
+                ? "bg-success/15 text-success"
+                : "bg-destructive/15 text-destructive",
+              mode === "deep" && "bg-white/15 text-white"
+            )}>
+              {credits}
+            </span>
           )}
         </button>
       </div>
@@ -210,6 +221,11 @@ export function SearchHome({ onSearch, mode, onModeChange }: SearchHomeProps) {
             </Card>
           )}
         </form>
+        <p className="text-center text-xs text-muted-foreground/60 max-w-lg mx-auto mt-3 leading-relaxed">
+          Disclaimer: AI Financial OS is an AI-powered research tool, not a registered financial advisor.
+          The analysis provided does not constitute financial or investment advice.
+          Always conduct your own due diligence.
+        </p>
       </div>
 
       {/* Popular Stocks */}

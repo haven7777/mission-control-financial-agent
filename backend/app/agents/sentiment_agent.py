@@ -47,7 +47,14 @@ SYSTEM_PROMPT = (
     '  {"classifications": [{"article_index": <int>, "sentiment": '
     '"bullish"|"bearish"|"neutral", "confidence": <0.0-1.0>, '
     '"reason": "<one sentence>"}, ...]}\n'
-    "Return one entry per article, in order."
+    "Return one entry per article, in order.\n\n"
+    "SIGNAL STRENGTH RULE: The `confidence` field represents Signal Strength — "
+    "a score from 0.0 to 1.0 based on the QUALITY and QUANTITY of the source, "
+    "NOT the probability of the sentiment direction. If the article comes from a "
+    "credible financial outlet (major news sites, analyst reports, company filings, "
+    "earnings releases, SEC disclosures), the confidence MUST be above 0.85 even "
+    "if the sentiment consensus is Neutral or Mixed. Reserve low scores (below 0.5) "
+    "only for low-quality, irrelevant, or spam-like content."
 )
 
 

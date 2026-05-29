@@ -65,19 +65,30 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
     <div className="h-screen flex flex-col bg-background">
       {/* Header with Under the Hood button */}
       <DashboardHeader query={ticker} onBack={onBack} status="approved">
-        {mode === "deep" && masterCode && (
+        {mode === "deep" ? (
           <div className="flex flex-col items-end gap-1">
             <button
               onClick={handleExportPdf}
               disabled={exporting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-sm shadow-lg shadow-indigo-500/30 disabled:opacity-50 transition-all"
             >
               <Download className="w-4 h-4" />
-              {exporting ? "Generating…" : "Export PDF"}
+              {exporting ? "Generating…" : "Get Full Analyst Report"}
             </button>
-            {exportError && (
-              <p className="text-xs text-destructive max-w-[220px] text-right">{exportError}</p>
-            )}
+            {exportError && <p className="text-xs text-destructive max-w-[220px] text-right">{exportError}</p>}
+          </div>
+        ) : (
+          <div className="relative group">
+            <button
+              disabled
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold text-sm shadow-lg shadow-indigo-500/30 opacity-40 cursor-not-allowed"
+            >
+              <Lock className="w-4 h-4" />
+              Get Full Analyst Report
+            </button>
+            <div className="absolute right-0 top-full mt-1 w-64 p-2 rounded-lg bg-popover border border-border text-xs text-muted-foreground shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+              PRO Feature: Run Deep Research to export an institutional PDF report.
+            </div>
           </div>
         )}
         <Sheet open={terminalOpen} onOpenChange={setTerminalOpen}>
@@ -115,7 +126,7 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
                   {ticker.toUpperCase()}
                 </span>
               </div>
-              <SynthesisConsole report={report} confidence={confidence} />
+              <SynthesisConsole report={report} confidence={confidence} executiveSummary={report.executive_summary} />
             </div>
           </section>
 
@@ -183,6 +194,12 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
               </div>
             </div>
           </section>
+
+          <p className="text-xs text-muted-foreground/50 text-center max-w-2xl mx-auto pb-6 leading-relaxed">
+            Disclaimer: AI Financial OS is an AI-powered research tool, not a registered financial advisor.
+            The analysis provided does not constitute financial or investment advice.
+            Always conduct your own due diligence.
+          </p>
 
         </div>
       </div>

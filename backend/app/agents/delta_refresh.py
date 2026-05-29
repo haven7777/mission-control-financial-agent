@@ -132,6 +132,10 @@ def run_delta_refresh(cached: FinalReport) -> FinalReport:
     except Exception as exc:  # noqa: BLE001
         log.warning("delta_refresh: Tavily scan failed — reusing cached sentiment: %s", exc)
 
+    settings = get_settings()
+    _is_deep = bool(cached.filings_context or cached.transcript_context)
+    _model_used = settings.openai_deep_model if _is_deep else settings.openai_model
+
     return FinalReport(
         ticker=ticker,
         company_name=cached.company_name,
@@ -144,9 +148,10 @@ def run_delta_refresh(cached: FinalReport) -> FinalReport:
         filings_context=cached.filings_context,
         transcript_context=cached.transcript_context,
         deep_narrative=cached.deep_narrative,
+        executive_summary=cached.executive_summary,
         data_snapshot=fresh_data,
         sentiment_snapshot=fresh_sentiment,
-        model_used=cached.model_used,
+        model_used=_model_used,
         delta_refreshed=True,
         generated_at=cached.generated_at,
     )

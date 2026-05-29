@@ -7,6 +7,8 @@ import { AgentTerminal, type AgentEvent, type AgentEventStatus } from "@/compone
 import { ResultsDashboard } from "@/components/dashboard/results-dashboard";
 import { SearchHome, type ResearchMode } from "@/components/search/search-home";
 import { MasterCodeDialog } from "@/components/search/master-code-dialog";
+import { PaywallModal } from "@/components/search/paywall-modal";
+import { useCredits } from "@/hooks/use-credits";
 import { LoadingSkeleton } from "@/components/search/loading-skeleton";
 import {
   Sheet,
@@ -103,8 +105,11 @@ function useFastAnalysis(ticker: string | null): {
     }
     let cancelled = false;
     setState({ status: "loading", report: null, error: null });
-    fetchAnalysis(ticker)
-      .then((report) => { if (!cancelled) setState({ status: "done", report, error: null }); })
+    const minDelay = new Promise<void>((res) =>
+      setTimeout(res, 2500 + Math.random() * 1000)
+    );
+    Promise.all([fetchAnalysis(ticker), minDelay])
+      .then(([report]) => { if (!cancelled) setState({ status: "done", report, error: null }); })
       .catch((err: Error) => { if (!cancelled) setState({ status: "error", report: null, error: err.message }); });
     return () => { cancelled = true; };
   }, [ticker]);
@@ -179,9 +184,12 @@ function stagesToEvents(stages: ProgressPayload[]): AgentEvent[] {
   });
 }
 
-function parseConfidence(stages: ProgressPayload[]): number {
+function parseConfidence(stages: ProgressPayload[], report: FinalReport | null): number {
   const msg = stages.find((s) => s.stage === "approved")?.message ?? "";
-  return parseInt(msg.match(/confidence (\d+)%/)?.[1] ?? "0", 10);
+  const fromStage = parseInt(msg.match(/confidence (\d+)%/)?.[1] ?? "0", 10);
+  if (fromStage > 0) return fromStage;
+  const fromSentiment = report?.sentiment_snapshot?.overall_confidence;
+  return fromSentiment ? Math.round(fromSentiment * 100) : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +202,10 @@ export default function Home() {
   const [mode, setMode] = useState<ResearchMode>("deep");
   const [masterCode, setMasterCodeState] = useState<string | null>(() => getMasterCode());
   const [showCodeDialog, setShowCodeDialog] = useState(false);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [pendingTicker, setPendingTicker] = useState<string | null>(null);
+
+  const { credits, consumeCredit, addCredits, isVipCodeUsed, markVipCodeUsed } = useCredits();
 
   // Deep mode: SSE stream with auth + Labor Illusion
   const deepTicker = mode === "deep" && ticker && !ticker.startsWith("__PENDING__") ? ticker : null;
@@ -224,13 +236,29 @@ export default function Home() {
     const first = query.split(",")[0].trim().toUpperCase();
     if (!first) return;
 
-    if (mode === "deep" && !masterCode) {
+    // Fast mode is always free — no credit checks, no paywall.
+    if (mode === "fast") {
+      setTicker(first);
+      return;
+    }
+
+    // Deep mode: master code gate (existing flow).
+    if (!masterCode) {
       setShowCodeDialog(true);
       setTicker(`__PENDING__${first}`);
       return;
     }
+
+    // Deep mode: credit gate.
+    if (credits <= 0) {
+      setPendingTicker(first);
+      setShowPaywallModal(true);
+      return;
+    }
+
+    consumeCredit();
     setTicker(first);
-  }, [mode, masterCode]);
+  }, [mode, masterCode, credits, consumeCredit]);
 
   const handleModeChange = useCallback((newMode: ResearchMode) => {
     setMode(newMode);
@@ -249,6 +277,17 @@ export default function Home() {
     );
   }, []);
 
+  function handleVipSuccess(code: string) {
+    markVipCodeUsed(code);
+    addCredits(100);  // +100 to balance (functional update)
+    consumeCredit();  // -1 for the pending deep search (batched after addCredits)
+    setShowPaywallModal(false);
+    if (pendingTicker) {
+      setTicker(pendingTicker);
+      setPendingTicker(null);
+    }
+  }
+
   function handleCodeCancel() {
     setShowCodeDialog(false);
     setMode("fast");
@@ -262,7 +301,7 @@ export default function Home() {
         ticker={ticker}
         report={displayReport}
         terminalEvents={stagesToEvents(stages)}
-        confidence={parseConfidence(stages)}
+        confidence={parseConfidence(stages, displayReport)}
         onBack={() => setTicker(null)}
         mode={mode}
         masterCode={masterCode}
@@ -325,6 +364,12 @@ export default function Home() {
         onSuccess={handleCodeSuccess}
         onCancel={handleCodeCancel}
       />
+      <PaywallModal
+        open={showPaywallModal}
+        onClose={() => { setShowPaywallModal(false); setPendingTicker(null); }}
+        onVipSuccess={handleVipSuccess}
+        isVipCodeUsed={isVipCodeUsed}
+      />
       {status === "error" && error && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm max-w-md text-center">
           {error}
@@ -334,6 +379,7 @@ export default function Home() {
         onSearch={handleSearch}
         mode={mode}
         onModeChange={handleModeChange}
+        credits={credits}
       />
     </>
   );

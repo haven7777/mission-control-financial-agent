@@ -45,6 +45,10 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         description="OpenAI model used when OpenAI is the active LLM provider.",
     )
+    openai_deep_model: str = Field(
+        default="gpt-4o",
+        description="OpenAI model used for Deep Research mode (higher capability).",
+    )
 
     # LangSmith tracing
     langsmith_api_key: str | None = None

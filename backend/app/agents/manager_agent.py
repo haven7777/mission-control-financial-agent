@@ -47,11 +47,27 @@ SYSTEM_PROMPT = (
     '   "one_line_summary": "<one sentence>",\n'
     '   "key_strengths": ["<sentence>", ...],   // 2-6 items\n'
     '   "key_risks":     ["<sentence>", ...],   // 2-6 items\n'
-    '   "deep_narrative": "<three paragraphs or null>"}  // null when filings or transcript absent\n\n'
+    '   "deep_narrative": "<paragraphs or null>",\n'
+    '   "executive_summary": "<3-4 sentence paragraph or null>"}  // executive_summary null in FAST mode\n\n'
     "Be balanced. Acknowledge uncertainty. If fundamentals and sentiment "
     "disagree, call that out explicitly. When a bull/bear debate is provided, "
     "engage with the strongest arguments from both sides in your strengths and "
     "risks. Each bullet must be grounded in the supplied data. Do not invent facts.\n\n"
+    "## overall_view Selection Rules\n\n"
+    "Do NOT default to 'mixed' out of laziness simply because a stock has standard "
+    "pros and cons — every stock does. Weigh the evidence and take a definitive stance "
+    "('positive' or 'negative'), or qualify it within your one_line_summary "
+    "(e.g., 'cautiously bullish' or 'cautiously bearish'). "
+    "Reserve 'mixed' strictly for one of these three scenarios:\n"
+    "  1. The opposing catalysts are genuinely balanced — roughly a 45/55 split in "
+    "evidence weight where neither side clearly dominates.\n"
+    "  2. The stock is trading completely sideways with no clear future catalysts in "
+    "either direction.\n"
+    "  3. A massive binary uncertainty exists (e.g., pending major litigation outcome, "
+    "regulatory approval decision, or sudden CEO departure) that makes leaning either "
+    "way irresponsible without resolution of that event.\n"
+    "Use 'neutral' when the data is thin, the company is in a stable low-volatility "
+    "holding pattern, or news coverage is purely informational with no directional signal.\n\n"
     "Where the supplied data suggests Israeli market relevance — such as a TASE or "
     "dual-listed company, NIS-denominated revenues, or Israeli headquarters — consider "
     "these contextual factors where material: "
@@ -68,20 +84,52 @@ SYSTEM_PROMPT = (
     "factor when the company is Israeli-domiciled. "
     "Apply these factors only when they are material and grounded in the supplied data."
     "\n\n## Deep Narrative (deep_narrative field)\n\n"
-    "Generate deep_narrative ONLY when BOTH filings_context AND transcript_context are "
-    "non-empty in the inputs. If either is absent, set deep_narrative to null.\n\n"
-    "When generating deep_narrative, write EXACTLY three paragraphs separated by blank lines:\n\n"
-    "Paragraph 1 — SEC Filing Analysis: Quote the exact names of 2-3 risk factor section "
-    "headings from filings_context. Include specific financial metrics (revenue, margins, "
-    "debt ratios) drawn from the data. Explain why each risk is material to the investment thesis.\n\n"
-    "Paragraph 2 — Earnings Call Subtext: Quote at least one specific executive statement "
-    "verbatim from transcript_context. Analyse what each quote reveals through evasion signals, "
-    "hedging language, or conspicuous omissions. Be specific — name the question that was "
-    "dodged, if applicable.\n\n"
-    "Paragraph 3 — Verdict: State a clear bull-vs-bear conviction level (e.g., 'Cautiously "
-    "bullish'). Name the single most important forward indicator an investor should monitor. "
-    "Keep to 3-4 sentences.\n\n"
-    "Do not add headers inside deep_narrative. Prose only."
+    "Generate deep_narrative when RESEARCH_MODE is DEEP, OR when filings_context is non-empty. "
+    "In FAST mode without filings, set deep_narrative to null.\n\n"
+    "Content rules based on available context:\n"
+    "  - filings AND transcript present: write 3 paragraphs (SEC Analysis, Exec Subtext, Verdict)\n"
+    "  - filings only (no transcript): write 2 paragraphs (SEC Analysis + Verdict). "
+    "Begin Verdict: 'Note: No earnings call transcript was available for this analysis.'\n"
+    "  - neither filings nor transcript (DEEP mode only): write 1 paragraph. Cite key quantitative "
+    "metrics from the data. Name one forward indicator to monitor. Begin: 'Deep Research Note: "
+    "SEC filing and transcript data were unavailable for this analysis.'\n\n"
+    "Paragraph definitions:\n"
+    "  SEC Analysis: Quote exact names of 2-3 risk factor section headings from filings_context. "
+    "Include specific financial metrics (revenue, margins, debt ratios). Explain materiality.\n"
+    "  Exec Subtext: Quote at least one specific executive statement verbatim from transcript_context. "
+    "Analyse evasion signals, hedging language, or omissions. Name dodged questions.\n"
+    "  Verdict: State bull-vs-bear conviction level. Name one forward indicator. 3-4 sentences.\n\n"
+    "Do not add headers inside deep_narrative. Prose only.\n\n"
+    "## Executive Summary (executive_summary field)\n\n"
+    "Generate executive_summary ONLY when RESEARCH_MODE is DEEP. In FAST mode, set to null.\n\n"
+    "Write a SINGLE dense paragraph of 3-4 sentences (60-90 words). "
+    "Sentence 1: Core investment thesis with conviction level. "
+    "Sentence 2: Valuation context (P/E vs. sector norms, growth vs. price, margin trajectory). "
+    "Sentence 3: Primary risk and its materiality to the thesis. "
+    "Sentence 4: Forward catalyst or monitoring signal that would change the verdict. "
+    "Ground every sentence in the specific data supplied. NEVER return a single sentence. "
+    "NEVER use generic language — cite specific numbers and company details.\n\n"
+    "CRITICAL PENALTY: Your executive_summary MUST be a thick, multi-sentence paragraph "
+    "synthesizing the valuation, SEC risk, and overall thesis. If it is a single sentence, "
+    "the output is considered a failure.\n\n"
+    "## Analytical Guardrails\n\n"
+    "Consistency: The bull_case and bear_case must not contradict the same factual claim. "
+    "If the bull case cites strong revenue growth, the bear case must not deny it — it should "
+    "argue that growth is priced in, decelerating, or offset by another risk. Facts are shared; "
+    "interpretations diverge.\n\n"
+    "Proportionality: Match language intensity to magnitude. A daily price move of less than 2% "
+    "must not be described as a 'massive sell-off,' 'crash,' or 'collapse.' A weekly move under "
+    "10% must not be called 'dramatic' or 'unprecedented.' Use precise language: '0.4% decline,' "
+    "'modest pullback,' 'slight underperformance.' Reserve strong language (surge, plunge, "
+    "rout, rally) for moves that actually warrant it (>5% daily, >15% weekly, or multi-sigma events).\n\n"
+    "## Transcript Guardrail\n\n"
+    "CRITICAL: If transcript_context is absent or empty, you MUST NOT invent, fabricate, "
+    "or paraphrase executive statements, earnings call quotes, management commentary, or "
+    "conference call remarks in ANY section of your output (key_strengths, key_risks, "
+    "deep_narrative, or executive_summary). Do not write phrases like 'management noted,' "
+    "'the CEO stated,' or 'in the earnings call' unless transcript_context explicitly "
+    "contains that information. Any reference to executive tone or forward guidance must "
+    "cite transcript_context verbatim or not appear at all."
 )
 
 
@@ -108,6 +156,7 @@ class _ManagerAgentState(BaseModel):
     bear_case: BearCase | None = None
     filings_context: FilingsContext | None = None
     transcript_context: TranscriptContext | None = None
+    is_deep_mode: bool = False
 
 
 # --- Prompt formatting -------------------------------------------------------
@@ -140,6 +189,26 @@ def _format_data(data: DataAgentReport) -> str:
         )
     if o.analyst_target_price is not None:
         lines.append(f"Analyst target price: {o.analyst_target_price}")
+
+    fm = data.financial_metrics
+    if fm:
+        def _pct(v: object) -> str:
+            return f"{float(v)*100:.1f}%" if v is not None else "N/A"
+        def _fmt(v: object, fmt: str = ".2f") -> str:
+            return format(float(v), fmt) if v is not None else "N/A"
+        if fm.get("revenue_ttm") is not None:
+            lines.append(f"Revenue TTM: ${fm['revenue_ttm']:,}")
+        lines.append(
+            f"Margins — Gross: {_pct(fm.get('gross_margin'))}, "
+            f"Operating: {_pct(fm.get('operating_margin'))}, "
+            f"Net: {_pct(fm.get('net_margin'))}"
+        )
+        lines.append(
+            f"Debt/Equity: {_fmt(fm.get('debt_to_equity'))}, "
+            f"ROE: {_pct(fm.get('roe'))}, "
+            f"Revenue growth YoY: {_pct(fm.get('revenue_growth_yoy'))}"
+        )
+
     desc = (o.description or "").strip()
     if desc:
         lines.append(f"Description: {desc[:600]}{'...' if len(desc) > 600 else ''}")
@@ -209,8 +278,9 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
     if not settings.openai_api_key:
         raise MissingLLMKey("OPENAI_API_KEY is not set in backend/.env")
 
+    model_name = settings.openai_deep_model if state.is_deep_mode else settings.openai_model
     llm = ChatOpenAI(
-        model=settings.openai_model,
+        model=model_name,
         api_key=settings.openai_api_key,
         temperature=0.0,
     )
@@ -250,6 +320,8 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
         if transcript_block:
             user_payload += f"\n\n{transcript_block}"
 
+    user_payload += f"\n\nRESEARCH_MODE: {'DEEP' if state.is_deep_mode else 'FAST'}"
+
     if state.revision_instruction:
         user_payload = (
             f"REVISION REQUIRED — your previous synthesis was rejected by the auditor.\n"
@@ -258,7 +330,7 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
         ) + user_payload
 
     log.info("manager_agent: synthesizing for %s via OpenAI (%s)%s",
-             state.data.ticker, settings.openai_model,
+             state.data.ticker, model_name,
              " [REVISION]" if state.revision_instruction else "")
     synthesis: ManagerSynthesis = structured.invoke([
         SystemMessage(content=SYSTEM_PROMPT),
@@ -288,6 +360,7 @@ def run_manager_agent(
     bear_case: BearCase | None = None,
     filings_context: FilingsContext | None = None,
     transcript_context: TranscriptContext | None = None,
+    is_deep_mode: bool = False,
 ) -> FinalReport:
     """Run the synthesis graph and return a `FinalReport`.
 
@@ -309,6 +382,7 @@ def run_manager_agent(
         "bear_case": bear_case,
         "filings_context": filings_context,
         "transcript_context": transcript_context,
+        "is_deep_mode": is_deep_mode,
     })
     synthesis: ManagerSynthesis = (
         result["synthesis"] if isinstance(result, dict) else result.synthesis
@@ -316,6 +390,8 @@ def run_manager_agent(
     if synthesis is None:
         raise RuntimeError("Manager graph finished with no synthesis in state")
 
+    settings = get_settings()
+    model_used = settings.openai_deep_model if is_deep_mode else settings.openai_model
     return FinalReport(
         ticker=data.ticker,
         company_name=data.overview.name,
@@ -325,12 +401,13 @@ def run_manager_agent(
         key_risks=synthesis.key_risks,
         data_snapshot=data,
         sentiment_snapshot=sentiment,
-        model_used=get_settings().openai_model,
+        model_used=model_used,
         bull_case=bull_case,
         bear_case=bear_case,
         filings_context=filings_context,
         transcript_context=transcript_context,
         deep_narrative=synthesis.deep_narrative,
+        executive_summary=synthesis.executive_summary,
     )
 
 

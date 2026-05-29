@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as _FuturesTimeout
 from datetime import datetime, timezone
 from typing import TypedDict
 
@@ -17,6 +19,13 @@ class FinancialMetricsResult(TypedDict):
     next_earnings_date: str | None  # ISO-8601 date string e.g. "2024-08-01"
     eps: float | None
     beta: float | None
+    revenue_ttm: int | None
+    gross_margin: float | None
+    operating_margin: float | None
+    net_margin: float | None
+    debt_to_equity: float | None
+    roe: float | None
+    revenue_growth_yoy: float | None
 
 
 @tool
@@ -27,7 +36,11 @@ def get_financial_metrics(ticker: str) -> FinancialMetricsResult:
     EPS, and Beta. Missing fields are None.
     """
     t = yf.Ticker(ticker.strip().upper())
-    info: dict = t.info or {}
+    try:
+        with ThreadPoolExecutor(max_workers=1) as _ex:
+            info: dict = _ex.submit(lambda: t.info or {}).result(timeout=5.0)
+    except (_FuturesTimeout, Exception):
+        info = {}
 
     next_earnings: str | None = None
     try:
@@ -63,4 +76,11 @@ def get_financial_metrics(ticker: str) -> FinancialMetricsResult:
         next_earnings_date=next_earnings,
         eps=_float(info.get("trailingEps")),
         beta=_float(info.get("beta")),
+        revenue_ttm=_int(info.get("totalRevenue")),
+        gross_margin=_float(info.get("grossMargins")),
+        operating_margin=_float(info.get("operatingMargins")),
+        net_margin=_float(info.get("profitMargins")),
+        debt_to_equity=_float(info.get("debtToEquity")),
+        roe=_float(info.get("returnOnEquity")),
+        revenue_growth_yoy=_float(info.get("revenueGrowth")),
     )

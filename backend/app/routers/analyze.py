@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
 
 from app.services.master_code_auth import require_master_code
-from app.agents.pipeline import run_full_analysis
+from app.agents.pipeline import run_fast_analysis
 from app.agents.pipeline_stream import run_full_analysis_stream
 from app.services.limiter import limiter
 from app.agents.sentiment_agent import (
@@ -85,7 +85,7 @@ def analyze(
         return cached
 
     try:
-        report = run_full_analysis(normalized)
+        report = run_fast_analysis(normalized)
     except (InvalidTickerError, NoArticlesFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (MissingNewsAPIKey, MissingLLMKey) as exc:

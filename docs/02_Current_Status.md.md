@@ -4,7 +4,27 @@
 # Current Status & Task Tracker
 
 ## 🎯 Current Focus
-**Phase 6 (SaaS Wrapper, Access Control & Guardrails) is COMPLETE as of 2026-05-28. App is feature-complete for beta. Next: deployment or Phase 4C Tasks 2–4 (TranscriptAgent LangGraph node + pipeline wiring + frontend).**
+**V4.0 QA Sprint is COMPLETE as of 2026-05-29. All 12 punch-list fixes shipped. PLG credit system + UX upgrades shipped on top. App is production-ready for beta. Next: deploy to production or continue PLG growth features.**
+
+**Just Completed (2026-05-29) — V4.0 QA Sprint + PLG & UX Upgrades:**
+- **Fix 1 — Fast Pipeline:** `run_fast_analysis()` in `pipeline.py` (Data + Sentiment + Manager only, no EDGAR/FMP/debate/critic). Sync `/api/analyze/{ticker}` endpoint switched to fast pipeline. `financial_metrics.py` yfinance `t.info` wrapped in `ThreadPoolExecutor` with 5s timeout.
+- **Fix 2 — PDF Buttons:** Results dashboard now shows two premium gradient buttons ("Get Full Analyst Report") side-by-side in deep mode (Button A: blue→indigo gradient + glow; Button B: slate gradient + animated Sparkles icon). Both buttons locked/greyed in fast mode with tooltip.
+- **Fix 3 — 0% Confidence:** `parseConfidence()` falls back to `sentiment_snapshot.overall_confidence * 100` when no SSE "approved" stage is present (fast mode / delta refresh).
+- **Fix 4 — Disclaimers:** Legal disclaimer added below search form (`search-home.tsx`) and bottom of results scroll area (`results-dashboard.tsx`).
+- **Fix 5 — PDF N/A Plague:** `report.html.j2` field paths corrected to match actual model structure (`quote.price`, `financial_metrics.*`, `overall_sentiment.value`, etc.); `shown_keys` list updated to snake_case.
+- **Fix 6 — Delta Refresh Model Leak:** `delta_refresh.py` now derives `model_used` from live config (`openai_deep_model` vs `openai_model`) instead of copying `cached.model_used`.
+- **Fix 7 — Transcript Guardrail:** Manager Agent SYSTEM_PROMPT: CRITICAL rule blocks fabricated executive quotes/earnings-call references when `transcript_context` is absent.
+- **Fix 8 — Deep Narrative Gate:** `RESEARCH_MODE: DEEP/FAST` injected into LLM user_payload. Deep narrative now always generated in DEEP mode (1/2/3 paragraph variants depending on available context).
+- **Fix 9 — Executive Summary:** `executive_summary: str | None` field added to `ManagerSynthesis` + `FinalReport`. Deep mode generates a 3–4 sentence institutional paragraph. Frontend: `api.ts` type updated; `synthesis-console.tsx` renders it below `one_line_summary` with italic left-border styling.
+- **Fix 10 — Bull/Bear Contradictions:** ✅ Done in prior hotfix.
+- **Fix 11 — PDF Pagination CSS:** ✅ Done in prior hotfix.
+- **Fix 12 — PDF Disclaimer:** Footer disclaimer updated to full legal text with delta-refresh notice.
+- **PLG Credit System:** `useCredits` hook (localStorage: `fast_credits` + `used_vip_codes`). `PaywallModal` component (VIP code → +100 deep credits, single-use enforcement, success animation). Credit gate on Deep Research mode only; Fast mode is always free. Credit badge on Deep Research toggle button.
+- **Signal Strength Reframe:** "Confidence" renamed to "Signal Strength" in `synthesis-console.tsx` tooltip and `report.html.j2` PDF table header. Sentiment Agent SYSTEM_PROMPT updated: confidence score now reflects source quality/quantity, not sentiment probability (≥0.85 for major financial outlets).
+- **Executive Summary Enforcement:** `ManagerSynthesis.executive_summary` Field description tightened to "exactly 3 to 4 detailed sentences, minimum 70 words". SYSTEM_PROMPT adds CRITICAL PENALTY rule for single-sentence output.
+- **Labor Illusion Lite (Fast mode):** `fetchAnalysis` sends `cache: "no-store"`. Fast analysis enforces 2.5–3.5s minimum display delay via `Promise.all([fetch, minDelay])`.
+- **Topic Card Roulette:** Category cards pick a random ticker from their 5-stock array on click, update the search input, and immediately trigger the search.
+- **Backend tests:** 13/13 pass. Frontend TypeScript build: clean.
 
 **Just Completed (2026-05-28) — Phase 6: SaaS Wrapper, Access Control & Guardrails:**
 - **Task 1 (Backend Auth):** `master_codes` Supabase table (DDL + index + RLS policy blocking anon/authenticated roles). `backend/app/services/master_code_auth.py` — `require_master_code` FastAPI dependency with 5-min in-memory TTL cache (thread-safe), reads from `X-Master-Code` header (fetch) or `?master_code=` query param (EventSource). `backend/app/routers/auth.py` — `GET /api/auth/ping` (rate-limited 10/min). SSE streaming endpoint gated; sync endpoint stays public. Prompt injection regex guard on both endpoints. Commits: `31307d1`, `296cf08`.
@@ -333,6 +353,21 @@
 * [x] Israeli market context appended to Manager Agent SYSTEM_PROMPT (5 factors)
 * [x] Injection guard smoke test `backend/scripts/test_injection_guard.py` — 10/10 pass
 * **Pre-beta:** Rotate seed code `DEEP-RESEARCH-BETA-2026` (in git history); enable RLS already applied via MCP
+
+### Phase 4D: PDF Export Engine 🔄 [IN PROGRESS]
+* [x] **Task 2a (2026-05-28):** WeasyPrint + Jinja2 dependencies — commit `c875a2e`
+  * `weasyprint==62.3` and `jinja2==3.1.4` appended to `backend/requirements.txt`
+  * `brew install pango` executed (macOS WeasyPrint dependency — pango 1.57.1 + full dep tree)
+  * Both Python packages installed successfully (`pip install weasyprint==62.3 jinja2==3.1.4`)
+* [x] **Task 2b (2026-05-28):** Jinja2 A4 PDF report template — commit `304b392`
+  * `backend/app/templates/` directory created
+  * `backend/app/templates/report.html.j2` created (512 lines)
+  * Full 7-section A4 template: Header + badge, One-line summary box, Market Data Snapshot (two tables), Investment Analysis (two-col strengths/risks), Bull & Bear Cases, Institutional Deep Dive (page-break), News Sentiment
+  * RTL support: `rtl` boolean var toggles `<html dir="rtl">`, Hebrew font, border/padding direction
+  * CSS: `@page` A4 + running headers/footers, badge colors, summary-box, two-col flexbox, data-grid, case-box bull/bear, page-break, no-break
+  * Template parse + compile verified: `jinja2 env.get_template('report.html.j2')` → OK
+* [ ] **Task 3:** PDF generation service — `app/services/pdf_generator.py` (`generate_pdf(report, rtl) → bytes`)
+* [ ] **Task 4:** `GET /api/analyze/{ticker}/pdf` endpoint; frontend download button
 
 ### Phase 4C: Earnings Call Transcript Analysis 🔄 [IN PROGRESS]
 * [x] **Task 1 (2026-05-28):** FMP config + transcript fetcher service — commit `9cdea2e`

@@ -312,6 +312,7 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
                 bear_case=bear_case,
                 filings_context=filings_context,
                 transcript_context=transcript_context,
+                is_deep_mode=True,
             )
         except Exception as exc:  # noqa: BLE001
             log.warning("pipeline_stream: manager failed (round %d): %s", revision_round, exc)
