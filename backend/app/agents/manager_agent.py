@@ -27,6 +27,7 @@ from app.models.filings import FilingsContext
 from app.models.transcript import TranscriptContext
 from app.models.manager import FinalReport, ManagerSynthesis
 from app.models.sentiment import SentimentAgentReport
+from app.utils.llm_retry import llm_retry
 from app.utils.sanitize import sanitize_bull_thesis, sanitize_bear_thesis
 
 log = logging.getLogger(__name__)
@@ -365,10 +366,15 @@ def _synthesize_node(state: _ManagerAgentState) -> dict[str, Any]:
     log.info("manager_agent: synthesizing for %s via OpenAI (%s)%s",
              state.data.ticker, model_name,
              " [REVISION]" if state.revision_instruction else "")
-    synthesis: ManagerSynthesis = structured.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=user_payload),
-    ])
+
+    @llm_retry
+    def _invoke() -> ManagerSynthesis:
+        return structured.invoke([
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=user_payload),
+        ])
+
+    synthesis: ManagerSynthesis = _invoke()
     return {"synthesis": synthesis}
 
 

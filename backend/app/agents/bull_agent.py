@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.models.agents import DataAgentReport
 from app.models.debate import BullCase
 from app.models.sentiment import SentimentAgentReport
+from app.utils.llm_retry import llm_retry
 from app.utils.sanitize import sanitize_bull_thesis
 
 log = logging.getLogger(__name__)
@@ -71,13 +72,18 @@ def run_bull_agent(
         f"NEWS & SENTIMENT:\n{_format_sentiment(sentiment)}"
     )
     log.info("bull_agent: building bull case for %s", data.ticker)
-    try:
-        result: BullCase = structured.invoke([
+
+    @llm_retry
+    def _invoke() -> BullCase:
+        return structured.invoke([
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content=payload),
         ])
+
+    try:
+        result: BullCase = _invoke()
     except Exception as exc:
-        log.error("bull_agent: LLM call failed for %s: %s", data.ticker, exc)
+        log.exception("bull_agent: LLM call failed ticker=%s", data.ticker)
         raise BullAgentError(f"Failed to generate bull case for {data.ticker}") from exc
 
     clean_thesis = sanitize_bull_thesis(result.thesis)

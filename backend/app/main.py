@@ -6,6 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
+from asgi_correlation_id import CorrelationIdFilter, CorrelationIdMiddleware
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -22,8 +23,13 @@ from app.services.tracing import configure_langsmith_tracing
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format="%(asctime)s [%(levelname)s] [%(correlation_id)s] %(name)s: %(message)s",
 )
+# Wire correlation-id filter onto every root handler so %(correlation_id)s
+# resolves on every log record (including those emitted from background
+# threads, where the contextvar may not be set — default '-' covers that).
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(CorrelationIdFilter(uuid_length=12, default_value="-"))
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("yfinance").setLevel(logging.WARNING)
@@ -62,13 +68,18 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)  # type: ignore[arg-type]
 
+# Correlation-ID middleware must be registered BEFORE CORS so the request-id
+# header survives the CORS preflight / response chain. Middlewares are applied
+# in reverse-registration order, so CORS wraps CorrelationId (outer → inner).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+app.add_middleware(CorrelationIdMiddleware)
 
 
 class HealthResponse(BaseModel):

@@ -105,8 +105,8 @@ def analyze(
     # Store fresh report (non-fatal)
     try:
         store_report(report)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("analyze: failed to cache report for %s: %s", normalized, exc)
+    except Exception:
+        log.exception("analyze: failed to cache report ticker=%s", normalized)
 
     return report
 

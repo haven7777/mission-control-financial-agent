@@ -30,13 +30,13 @@ def export_pdf(
     try:
         pdf_bytes = render_report_pdf(report, rtl=rtl)
     except OSError as exc:
-        log.error("export_pdf: WeasyPrint system library unavailable: %s", exc)
+        log.exception("export_pdf: WeasyPrint system library unavailable ticker=%s", report.ticker)
         raise HTTPException(
             status_code=503,
             detail="PDF generation is unavailable on this server — system libraries not configured.",
         ) from exc
     except Exception as exc:
-        log.error("export_pdf: PDF generation failed: %s", exc)
+        log.exception("export_pdf: PDF generation failed ticker=%s", report.ticker)
         raise HTTPException(status_code=500, detail="PDF generation failed.") from exc
     filename = f"{report.ticker.upper()}_deep_research.pdf"
     return StreamingResponse(

@@ -2,8 +2,11 @@
 // Decimals are serialized as strings by FastAPI/Pydantic v2; volumes and
 // market_capitalization stay as numbers.
 //
-// Streaming: streamAnalysis() opens an EventSource and calls onEvent for
-// each server-sent event.  Returns a cleanup function to close the stream.
+// Streaming: streamAnalysis() opens a fetch-based SSE stream so we can send
+// the X-Master-Code header (native EventSource cannot set headers). Returns
+// a cleanup function (AbortController.abort) to close the stream.
+
+import { fetchEventSource } from "@microsoft/fetch-event-source";
 
 export type StockQuote = {
   symbol: string;
@@ -274,34 +277,35 @@ export function streamAnalysis(
     return () => {};
   }
 
-  const params = new URLSearchParams();
-  if (masterCode) params.set("master_code", masterCode);
-  const query = params.toString() ? `?${params.toString()}` : "";
-  const url = `${API_BASE_URL}/api/analyze/${encodeURIComponent(trimmed)}/stream${query}`;
-  const source = new EventSource(url);
+  const controller = new AbortController();
+  const url = `${API_BASE_URL}/api/analyze/${encodeURIComponent(trimmed)}/stream`;
 
-  source.addEventListener("progress", (e: Event) => {
-    const data = JSON.parse((e as MessageEvent).data) as ProgressPayload;
-    onEvent({ type: "progress", data });
+  fetchEventSource(url, {
+    signal: controller.signal,
+    headers: masterCode ? { "X-Master-Code": masterCode } : {},
+    openWhenHidden: true,
+    onmessage(ev) {
+      if (ev.event === "progress") {
+        onEvent({ type: "progress", data: JSON.parse(ev.data) as ProgressPayload });
+      } else if (ev.event === "result") {
+        onEvent({ type: "result", data: JSON.parse(ev.data) as FinalReport });
+        controller.abort();
+      } else if (ev.event === "stream_error") {
+        onEvent({ type: "stream_error", data: JSON.parse(ev.data) as { message: string } });
+        controller.abort();
+      }
+    },
+    onerror() {
+      onEvent({ type: "connection_error", data: { message: "Lost connection to server." } });
+      controller.abort();
+      // Throw to stop fetch-event-source's auto-retry loop. AbortController
+      // is the canonical cleanup path; this just prevents reconnect attempts.
+      throw new Error("stream closed");
+    },
+  }).catch(() => {
+    // onerror already reported to the caller; swallow to avoid an unhandled
+    // promise rejection on the AbortError or thrown sentinel above.
   });
 
-  source.addEventListener("result", (e: Event) => {
-    const data = JSON.parse((e as MessageEvent).data) as FinalReport;
-    onEvent({ type: "result", data });
-    source.close();
-  });
-
-  source.addEventListener("stream_error", (e: Event) => {
-    const data = JSON.parse((e as MessageEvent).data) as { message: string };
-    onEvent({ type: "stream_error", data });
-    source.close();
-  });
-
-  // Native onerror fires when the TCP connection drops (not a named SSE event).
-  source.onerror = () => {
-    onEvent({ type: "connection_error", data: { message: "Lost connection to server." } });
-    source.close();
-  };
-
-  return () => source.close();
+  return () => controller.abort();
 }

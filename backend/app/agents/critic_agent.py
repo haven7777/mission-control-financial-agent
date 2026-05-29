@@ -29,6 +29,7 @@ from app.models.agents import DataAgentReport
 from app.models.critic import CritiqueReport, CritiqueResult
 from app.models.manager import FinalReport
 from app.models.sentiment import SentimentAgentReport
+from app.utils.llm_retry import llm_retry
 
 log = logging.getLogger(__name__)
 
@@ -163,10 +164,15 @@ def _critique_node(state: _CriticAgentState) -> dict[str, Any]:
         "critic_agent: auditing %s (round %d) via Groq (%s)",
         state.ticker, state.revision_round, settings.openai_model,
     )
-    result: CritiqueResult = structured.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=user_payload),
-    ])
+
+    @llm_retry
+    def _invoke() -> CritiqueResult:
+        return structured.invoke([
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=user_payload),
+        ])
+
+    result: CritiqueResult = _invoke()
     return {"critique_result": result}
 
 

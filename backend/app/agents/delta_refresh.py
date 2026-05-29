@@ -32,6 +32,7 @@ from app.models.sentiment import (
     SentimentClassificationBatch,
 )
 from app.services import tavily as tavily_svc
+from app.utils.llm_retry import llm_retry
 
 log = logging.getLogger(__name__)
 
@@ -63,13 +64,17 @@ def _classify_articles(ticker: str, articles: list[NewsArticle]) -> list[Classif
         f"[{i}] Title: {a.title}\nSnippet: {a.content.strip()[:600]}"
         for i, a in enumerate(articles)
     )
-    try:
-        batch: SentimentClassificationBatch = structured.invoke([
+    @llm_retry
+    def _invoke() -> SentimentClassificationBatch:
+        return structured.invoke([
             SystemMessage(content=_CLASSIFY_SYSTEM_PROMPT),
             HumanMessage(content=f"Ticker: {ticker}\n\nArticles:\n{user_payload}"),
         ])
-    except Exception as exc:  # noqa: BLE001
-        log.warning("delta_refresh: LLM classification failed: %s", exc)
+
+    try:
+        batch: SentimentClassificationBatch = _invoke()
+    except Exception:
+        log.exception("delta_refresh: LLM classification failed ticker=%s", ticker)
         return []
 
     by_index = {c.article_index: c for c in batch.classifications}

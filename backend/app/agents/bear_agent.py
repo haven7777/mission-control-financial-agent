@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.models.agents import DataAgentReport
 from app.models.debate import BearCase
 from app.models.sentiment import SentimentAgentReport
+from app.utils.llm_retry import llm_retry
 from app.utils.sanitize import sanitize_bear_thesis
 
 log = logging.getLogger(__name__)
@@ -70,13 +71,18 @@ def run_bear_agent(
         f"NEWS & SENTIMENT:\n{_format_sentiment(sentiment)}"
     )
     log.info("bear_agent: building bear case for %s", data.ticker)
-    try:
-        result: BearCase = structured.invoke([
+
+    @llm_retry
+    def _invoke() -> BearCase:
+        return structured.invoke([
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content=payload),
         ])
+
+    try:
+        result: BearCase = _invoke()
     except Exception as exc:
-        log.error("bear_agent: LLM call failed for %s: %s", data.ticker, exc)
+        log.exception("bear_agent: LLM call failed ticker=%s", data.ticker)
         raise BearAgentError(f"Failed to generate bear case for {data.ticker}") from exc
 
     clean_thesis = sanitize_bear_thesis(result.thesis)

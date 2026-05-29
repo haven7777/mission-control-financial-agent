@@ -32,6 +32,7 @@ from app.models.sentiment import (
 )
 from app.services.tavily import MissingNewsAPIKey, NewsFetchError
 from app.tools.news_sentiment import get_news_sentiment
+from app.utils.llm_retry import llm_retry
 
 log = logging.getLogger(__name__)
 
@@ -131,10 +132,15 @@ def _classify_node(state: _SentimentAgentState) -> dict:
 
     log.info("sentiment_agent: classifying %d articles via Groq (%s)",
              len(state.articles), settings.openai_model)
-    batch: SentimentClassificationBatch = structured.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=f"Ticker: {state.ticker}\n\nArticles:\n{user_payload}"),
-    ])
+
+    @llm_retry
+    def _invoke() -> SentimentClassificationBatch:
+        return structured.invoke([
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=f"Ticker: {state.ticker}\n\nArticles:\n{user_payload}"),
+        ])
+
+    batch: SentimentClassificationBatch = _invoke()
 
     # Defensive: align classifications to articles by index.
     by_index: dict[int, ArticleSentiment] = {c.article_index: c for c in batch.classifications}

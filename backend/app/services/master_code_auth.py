@@ -1,12 +1,13 @@
 """FastAPI dependency for Master Code authentication.
 
-Reads the code from:
-  - X-Master-Code  request header  (regular fetch / POST requests)
-  - ?master_code=  query parameter (EventSource cannot send custom headers)
+Reads the code from the X-Master-Code request header only. SSE clients use a
+fetch-based EventSource (e.g., @microsoft/fetch-event-source) to set the
+header — query-param fallback was removed per the security audit (codes
+were leaking into nginx access logs and proxy caches).
 
 Validates against the Supabase `master_codes` table. Results are cached
 in-memory for 5 minutes (CACHE_TTL_S) to avoid a Supabase round-trip on
-every streaming chunk connection.
+every connection.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import logging
 import threading
 import time
 
-from fastapi import Header, HTTPException, Query
+from fastapi import Header, HTTPException
 
 from app.services.supabase_client import get_supabase_client
 
@@ -45,8 +46,8 @@ def _validate_code(code: str) -> bool:
             .execute()
         )
         is_valid = bool(result.data) and result.data[0]["is_active"] is True
-    except Exception as exc:  # noqa: BLE001
-        log.warning("master_code_auth: Supabase lookup failed: %s", exc)
+    except Exception:
+        log.exception("master_code_auth: Supabase lookup failed")
         return False
 
     with _cache_lock:
@@ -55,26 +56,20 @@ def _validate_code(code: str) -> bool:
 
 
 def require_master_code(
-    x_master_code: str | None = Header(default=None),
-    master_code: str | None = Query(default=None),
+    x_master_code: str | None = Header(default=None, alias="X-Master-Code"),
 ) -> None:
     """FastAPI dependency: validates Master Code; raises 401/403 on failure.
 
-    Accepts code from X-Master-Code header (fetch) or ?master_code= query
-    param (EventSource, which cannot set custom headers). Plain def so
+    Header-only — accepts code from X-Master-Code request header. Plain def so
     FastAPI runs it in a thread-pool, avoiding event-loop stalls from the
     blocking Supabase call in _validate_code.
     """
-    code = x_master_code if x_master_code is not None else master_code
-    if not code:
+    if not x_master_code:
         raise HTTPException(
             status_code=401,
-            detail=(
-                "Deep Research requires a Master Code. "
-                "Pass it via X-Master-Code header or ?master_code= query param."
-            ),
+            detail="Deep Research requires a Master Code (X-Master-Code header).",
         )
-    if not _validate_code(code):
+    if not _validate_code(x_master_code):
         raise HTTPException(
             status_code=403,
             detail="Master Code is invalid or has been deactivated.",

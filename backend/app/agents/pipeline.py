@@ -44,6 +44,10 @@ from app.models.filings import FilingsContext
 from app.models.manager import FinalReport
 from app.models.sentiment import Sentiment, SentimentAgentReport
 
+# Hard upper bound on any single agent thread before we degrade or fail.
+# Set per audit (Fix 1): prevents one slow LLM from deadlocking the pipeline.
+_THREAD_TIMEOUT_SECS = 45
+
 log = logging.getLogger(__name__)
 
 
@@ -111,21 +115,30 @@ def _debate_node(state: _PipelineState) -> dict:
     def _run_bull() -> None:
         try:
             q.put(("bull_ok", run_bull_agent(state.data, state.sentiment)))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline: bull agent failed ticker=%s", state.ticker)
             q.put(("bull_err", exc))
 
     def _run_bear() -> None:
         try:
             q.put(("bear_ok", run_bear_agent(state.data, state.sentiment)))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline: bear agent failed ticker=%s", state.ticker)
             q.put(("bear_err", exc))
 
     bull_t = threading.Thread(target=_run_bull, daemon=True)
     bear_t = threading.Thread(target=_run_bear, daemon=True)
     bull_t.start()
     bear_t.start()
-    bull_t.join()
-    bear_t.join()
+    bull_t.join(timeout=_THREAD_TIMEOUT_SECS)
+    bear_t.join(timeout=_THREAD_TIMEOUT_SECS)
+    if bull_t.is_alive() or bear_t.is_alive():
+        log.critical(
+            "pipeline: debate threads exceeded %ds timeout ticker=%s bull_alive=%s bear_alive=%s — degrading without debate",
+            _THREAD_TIMEOUT_SECS, state.ticker, bull_t.is_alive(), bear_t.is_alive(),
+        )
+        # Graceful degradation: synthesize without bull/bear (manager handles None).
+        return {"bull_case": None, "bear_case": None}
 
     bull_case: BullCase | None = None
     bear_case: BearCase | None = None
@@ -271,7 +284,8 @@ def run_fast_analysis(ticker: str) -> FinalReport:
         nonlocal data_report, data_exc
         try:
             data_report = run_data_agent(normalized)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline: fast data fetch failed ticker=%s", normalized)
             data_exc = exc
 
     def _fetch_sentiment() -> None:
@@ -288,15 +302,22 @@ def run_fast_analysis(ticker: str) -> FinalReport:
                 classified=[],
                 is_zero_news=True,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline: fast sentiment fetch failed ticker=%s", normalized)
             sentiment_exc = exc
 
     t1 = threading.Thread(target=_fetch_data, daemon=True)
     t2 = threading.Thread(target=_fetch_sentiment, daemon=True)
     t1.start()
     t2.start()
-    t1.join(timeout=30)
-    t2.join(timeout=30)
+    t1.join(timeout=_THREAD_TIMEOUT_SECS)
+    t2.join(timeout=_THREAD_TIMEOUT_SECS)
+    if t1.is_alive() or t2.is_alive():
+        log.critical(
+            "pipeline: fast pipeline exceeded %ds ticker=%s data_alive=%s sentiment_alive=%s",
+            _THREAD_TIMEOUT_SECS, normalized, t1.is_alive(), t2.is_alive(),
+        )
+        raise RuntimeError("Fast pipeline: data or sentiment agent exceeded timeout")
 
     if data_exc:
         raise data_exc

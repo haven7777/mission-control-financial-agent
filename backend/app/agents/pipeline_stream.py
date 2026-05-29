@@ -20,8 +20,15 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Iterator
+
+# Hard upper bound per phase (data/sentiment/filings/transcript and debate).
+# Set per audit (Fix 1): prevents one slow LLM from deadlocking the SSE stream.
+_PHASE_TIMEOUT_SECS = 45
+# Defensive cleanup join — threads should have already exited by this point.
+_CLEANUP_JOIN_SECS = 5
 
 from app.agents.delta_refresh import run_delta_refresh
 from app.agents.bear_agent import run_bear_agent
@@ -70,8 +77,8 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         def _do_delta() -> None:
             try:
                 refreshed_holder.append(run_delta_refresh(cached))
-            except Exception as exc:  # noqa: BLE001
-                log.warning("pipeline_stream: delta refresh failed: %s", exc)
+            except Exception:
+                log.exception("pipeline_stream: delta refresh failed ticker=%s", normalized)
 
         _delta_thread = threading.Thread(target=_do_delta, daemon=True)
         _delta_thread.start()
@@ -96,8 +103,8 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
 
         try:
             store_report(refreshed)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("pipeline_stream: failed to update cache after delta refresh: %s", exc)
+        except Exception:
+            log.exception("pipeline_stream: failed to update cache after delta refresh ticker=%s", normalized)
         return
 
     yield _progress("cache_miss", "No recent cache — running full analysis…")
@@ -109,7 +116,8 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     def _run_data() -> None:
         try:
             result_q.put(("data_ok", run_data_agent(normalized)))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline_stream: data agent failed ticker=%s", normalized)
             result_q.put(("data_err", exc))
 
     def _run_sentiment() -> None:
@@ -126,19 +134,22 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
                 is_zero_news=True,
             )
             result_q.put(("sentiment_ok", empty))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline_stream: sentiment agent failed ticker=%s", normalized)
             result_q.put(("sentiment_err", exc))
 
     def _run_filings() -> None:
         try:
             result_q.put(("filings_ok", run_filings_agent(normalized)))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline_stream: filings agent failed ticker=%s", normalized)
             result_q.put(("filings_err", exc))
 
     def _run_transcript() -> None:
         try:
             result_q.put(("transcript_ok", run_transcript_agent(normalized)))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline_stream: transcript agent failed ticker=%s", normalized)
             result_q.put(("transcript_err", exc))
 
     yield _progress("started", f"Starting analysis for {normalized}…")
@@ -159,9 +170,33 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     filings_context: FilingsContext | None = None
     transcript_context: TranscriptContext | None = None
     remaining = 4
+    phase_deadline = time.monotonic() + _PHASE_TIMEOUT_SECS
 
     while remaining:
-        tag, value = result_q.get()
+        budget = phase_deadline - time.monotonic()
+        if budget <= 0:
+            log.critical(
+                "pipeline_stream: phase 1 exceeded %ds ticker=%s missing=%d data=%s sentiment=%s filings=%s transcript=%s",
+                _PHASE_TIMEOUT_SECS, normalized, remaining,
+                data_report is not None, sentiment_report is not None,
+                filings_context is not None, transcript_context is not None,
+            )
+            if data_report is None or sentiment_report is None:
+                yield _stream_error("Analysis timed out fetching market data or sentiment")
+                return
+            # filings/transcript degrade silently to empty contexts
+            if filings_context is None:
+                filings_context = FilingsContext(ticker=normalized, form_type="10-K", chunks=[], is_empty=True)
+                yield _progress("filings_unavailable", "SEC filing timed out — continuing without filing context")
+            if transcript_context is None:
+                transcript_context = TranscriptContext(ticker=normalized, is_empty=True)
+                yield _progress("transcript_unavailable", "Transcript timed out — continuing without transcript context")
+            break
+
+        try:
+            tag, value = result_q.get(timeout=budget)
+        except queue.Empty:
+            continue  # next loop iteration will hit the deadline check
 
         if tag == "data_ok":
             data_report = value
@@ -201,10 +236,11 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         elif tag in ("data_err", "sentiment_err"):
             log.warning("pipeline_stream: %s failed: %s", tag, value)
             yield _stream_error(str(value))
-            data_thread.join()
-            sentiment_thread.join()
-            filings_thread.join()
-            transcript_thread.join()
+            # Defensive cleanup — daemon threads die with the process anyway.
+            data_thread.join(timeout=_CLEANUP_JOIN_SECS)
+            sentiment_thread.join(timeout=_CLEANUP_JOIN_SECS)
+            filings_thread.join(timeout=_CLEANUP_JOIN_SECS)
+            transcript_thread.join(timeout=_CLEANUP_JOIN_SECS)
             return
 
         elif tag == "filings_err":
@@ -238,10 +274,10 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
                 "Transcript retrieval failed — continuing without transcript context",
             )
 
-    data_thread.join()
-    sentiment_thread.join()
-    filings_thread.join()
-    transcript_thread.join()
+    data_thread.join(timeout=_CLEANUP_JOIN_SECS)
+    sentiment_thread.join(timeout=_CLEANUP_JOIN_SECS)
+    filings_thread.join(timeout=_CLEANUP_JOIN_SECS)
+    transcript_thread.join(timeout=_CLEANUP_JOIN_SECS)
 
     # ── Phase 1.5: Bull vs. Bear debate (parallel) ────────────────────────────
     yield _progress("debating", "Bull analyst vs. Bear analyst debating the stock…")
@@ -251,13 +287,15 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     def _run_bull_debate() -> None:
         try:
             debate_q.put(("bull_ok", run_bull_agent(data_report, sentiment_report)))  # type: ignore[arg-type]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline_stream: bull debate failed ticker=%s", normalized)
             debate_q.put(("bull_err", exc))
 
     def _run_bear_debate() -> None:
         try:
             debate_q.put(("bear_ok", run_bear_agent(data_report, sentiment_report)))  # type: ignore[arg-type]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
+            log.exception("pipeline_stream: bear debate failed ticker=%s", normalized)
             debate_q.put(("bear_err", exc))
 
     bull_t = threading.Thread(target=_run_bull_debate, daemon=True)
@@ -268,8 +306,23 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     bull_case: BullCase | None = None
     bear_case: BearCase | None = None
 
-    for _ in range(2):
-        tag, value = debate_q.get()
+    debate_deadline = time.monotonic() + _PHASE_TIMEOUT_SECS
+    debate_collected = 0
+    while debate_collected < 2:
+        budget = debate_deadline - time.monotonic()
+        if budget <= 0:
+            log.critical(
+                "pipeline_stream: debate exceeded %ds ticker=%s bull=%s bear=%s — degrading without debate",
+                _PHASE_TIMEOUT_SECS, normalized,
+                bull_case is not None, bear_case is not None,
+            )
+            # Graceful degradation: manager handles bull_case/bear_case being None.
+            break
+        try:
+            tag, value = debate_q.get(timeout=budget)
+        except queue.Empty:
+            continue
+        debate_collected += 1
         if tag == "bull_ok":
             bull_case = value
         elif tag == "bear_ok":
@@ -277,8 +330,8 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         else:
             log.warning("pipeline_stream: %s failed: %s", tag, value)
 
-    bull_t.join()
-    bear_t.join()
+    bull_t.join(timeout=_CLEANUP_JOIN_SECS)
+    bear_t.join(timeout=_CLEANUP_JOIN_SECS)
 
     if bull_case and bear_case:
         yield _progress("debate_complete", "Bull vs. Bear debate complete — synthesizing final view…")
@@ -314,8 +367,8 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
                 transcript_context=transcript_context,
                 is_deep_mode=True,
             )
-        except Exception as exc:  # noqa: BLE001
-            log.warning("pipeline_stream: manager failed (round %d): %s", revision_round, exc)
+        except Exception as exc:
+            log.exception("pipeline_stream: manager failed ticker=%s round=%d", normalized, revision_round)
             yield _stream_error(str(exc))
             return
 
@@ -327,8 +380,8 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
                 final, data_report, sentiment_report, revision_round  # type: ignore[arg-type]
             )
             cr = critique.critique_result
-        except Exception as exc:  # noqa: BLE001
-            log.warning("pipeline_stream: critic failed (round %d): %s", revision_round, exc)
+        except Exception:
+            log.exception("pipeline_stream: critic failed ticker=%s round=%d", normalized, revision_round)
             # Critic failure is non-fatal: surface the Manager's last draft.
             break
 
@@ -359,5 +412,5 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
     # Store in Supabase after the stream completes (non-fatal — never blocks the client)
     try:
         store_report(final)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("pipeline_stream: failed to cache report for %s: %s", normalized, exc)
+    except Exception:
+        log.exception("pipeline_stream: failed to cache report ticker=%s", normalized)
