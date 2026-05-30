@@ -17,6 +17,7 @@ import {
 import { Download, Lock, Terminal } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { exportPdf, type FinalReport } from "@/lib/api"
+import { jakarta } from "@/lib/fonts"
 
 interface ResultsDashboardProps {
   ticker: string
@@ -62,7 +63,7 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className={`${jakarta.className} h-screen flex flex-col bg-background`}>
       {/* Header with Under the Hood button */}
       <DashboardHeader query={ticker} onBack={onBack} status="approved">
         {mode === "deep" ? (

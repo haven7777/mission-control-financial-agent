@@ -81,21 +81,21 @@ export function PaywallModal({
           </DialogTitle>
           <DialogDescription>
             You&apos;ve used all your free deep analyses. Enter a VIP code to
-            unlock +100 more.
+            unlock +3 more.
           </DialogDescription>
         </DialogHeader>
 
         {submitState === "success" ? (
           <div className="flex flex-col items-center gap-3 py-8">
             <CheckCircle2 className="w-12 h-12 text-success" />
-            <p className="font-semibold text-foreground text-lg">+100 analyses unlocked!</p>
+            <p className="font-semibold text-foreground text-lg">+3 analyses unlocked!</p>
             <p className="text-sm text-muted-foreground">Running your analysis…</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm text-muted-foreground">
               <Gift className="w-4 h-4 text-primary shrink-0" />
-              Each VIP code grants exactly +100 deep analyses. Codes are single-use.
+              Each VIP code grants exactly +3 deep analyses. Codes are single-use.
             </div>
             <Input
               placeholder="Enter VIP code…"

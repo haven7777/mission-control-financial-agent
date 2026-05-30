@@ -17,8 +17,8 @@ export function DebatePanel({ bull_case, bear_case }: DebatePanelProps) {
           <TrendingUp className="w-5 h-5" />
           Bull Case
         </h3>
-        <p className="text-sm text-foreground/80 leading-relaxed italic">
-          &ldquo;{bull_case.thesis}&rdquo;
+        <p className="text-base text-foreground/85 leading-relaxed">
+          {bull_case.thesis}
         </p>
       </div>
 
@@ -28,8 +28,8 @@ export function DebatePanel({ bull_case, bear_case }: DebatePanelProps) {
           <TrendingDown className="w-5 h-5" />
           Bear Case
         </h3>
-        <p className="text-sm text-foreground/80 leading-relaxed italic">
-          &ldquo;{bear_case.thesis}&rdquo;
+        <p className="text-base text-foreground/85 leading-relaxed">
+          {bear_case.thesis}
         </p>
       </div>
     </div>

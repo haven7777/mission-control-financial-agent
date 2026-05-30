@@ -295,7 +295,7 @@ export default function Home() {
 
   function handleVipSuccess(code: string) {
     markVipCodeUsed(code);
-    addCredits(100);  // +100 to balance (functional update)
+    addCredits(3);    // +3 to balance (functional update)
     consumeCredit();  // -1 for the pending deep search (batched after addCredits)
     setShowPaywallModal(false);
     if (pendingTicker) {
