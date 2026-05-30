@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { AgentTerminal, type AgentEvent, type AgentEventStatus } from "@/components/dashboard/agent-terminal";
 import { ResultsDashboard } from "@/components/dashboard/results-dashboard";
+import { StreamErrorCard } from "@/components/dashboard/stream-error-card";
 import { SearchHome, type ResearchMode } from "@/components/search/search-home";
 import { MasterCodeDialog } from "@/components/search/master-code-dialog";
 import { PaywallModal } from "@/components/search/paywall-modal";
@@ -41,16 +42,20 @@ interface StreamState {
   stages: ProgressPayload[];
   report: FinalReport | null;
   error: string | null;
+  retry: () => void;
 }
 
 function useAnalysisStream(ticker: string | null, masterCode: string | null): StreamState {
-  const [state, setState] = useState<StreamState>({
+  const [state, setState] = useState<Omit<StreamState, "retry">>({
     status: "idle",
     stages: [],
     report: null,
     error: null,
   });
 
+  // Bumping `retryNonce` re-runs the effect with the same ticker — that's how
+  // "Try Again" re-triggers the analysis without the user re-typing.
+  const [retryNonce, setRetryNonce] = useState(0);
   const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -70,6 +75,9 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
       } else if (event.type === "result") {
         setState((prev) => ({ ...prev, status: "done", report: event.data }));
       } else {
+        // Both "stream_error" (server-side) and "connection_error" (network
+        // drop) land here. The hook treats them identically — the consumer
+        // shows the recovery card and lets the user retry.
         setState((prev) => ({ ...prev, status: "error", error: event.data.message }));
       }
     }, masterCode);
@@ -79,9 +87,11 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
       cleanup();
       cleanupRef.current = null;
     };
-  }, [ticker, masterCode]);
+  }, [ticker, masterCode, retryNonce]);
 
-  return state;
+  const retry = useCallback(() => setRetryNonce((n) => n + 1), []);
+
+  return { ...state, retry };
 }
 
 // ---------------------------------------------------------------------------
@@ -222,13 +232,18 @@ export default function Home() {
   const stages = mode === "deep" ? streamState.stages : [];
   const error = mode === "deep" ? streamState.error : fastState.error;
 
-  // Labor Illusion runs only in Deep mode
+  // Labor Illusion runs only in Deep mode. Uses a unified 20s floor for both
+  // cached and uncached searches — the reveal happens at max(realBackend, 20s).
   const isActive = mode === "deep" && (
     status === "streaming" ||
     status === "done" ||
     (status === "error" && report !== null)
   );
-  const { revealedReport, illusionMessage } = useLabourIllusion(report, isActive, ticker);
+  const { revealedReport, illusionMessage } = useLabourIllusion(
+    report,
+    isActive,
+    ticker,
+  );
 
   // Fast mode shows report immediately; Deep mode holds until illusion elapses
   const displayReport = mode === "fast" ? report : revealedReport;
@@ -310,6 +325,34 @@ export default function Home() {
     );
   }
 
+  // ── Stream Error Recovery ────────────────────────────────────────────────
+  // A Deep-mode stream that dropped or errored before delivering a result.
+  // The labor illusion has already stopped (isActive=false because report is null);
+  // we show a premium recovery card with a Try Again button that re-runs the
+  // same ticker via the hook's retry().
+  if (
+    mode === "deep" &&
+    status === "error" &&
+    error &&
+    !displayReport &&
+    ticker &&
+    !ticker.startsWith("__PENDING__")
+  ) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        <DashboardHeader query={ticker} onBack={() => setTicker(null)} status="processing" />
+        <div className="flex-1 overflow-auto flex items-center">
+          <StreamErrorCard
+            ticker={ticker}
+            message={error}
+            onRetry={streamState.retry}
+            onBack={() => setTicker(null)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if ((status === "streaming" || status === "loading" || isActive) && ticker && !ticker.startsWith("__PENDING__")) {
     return (
@@ -341,7 +384,8 @@ export default function Home() {
           {mode === "deep" ? (
             <LoadingSkeleton
               query={ticker}
-              complete={stages.some((s) => s.stage === "approved")}
+              stages={stages}
+              complete={stages.some((s) => s.stage === "approved" || s.stage === "delta_complete")}
               illusionMessage={illusionMessage}
             />
           ) : (

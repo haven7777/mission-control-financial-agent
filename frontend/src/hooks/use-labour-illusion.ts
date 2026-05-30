@@ -16,8 +16,14 @@ const ILLUSION_STAGES = [
   { atMs: 42000, text: "Finalizing report…" },
 ] as const;
 
-const MIN_MS = 30_000;
-const MAX_MS = 45_000;
+// Strict floor: every Deep search — cached or uncached — waits at least
+// this long before the report is revealed. Reveal is gated by
+// `max(realBackendTime, FLOOR_MS)`, never just the floor.
+const FLOOR_MS = 20_000;
+// Generous safety cap: stop the timer if we've waited well past the floor
+// without a report (e.g., backend silently hung). The error-recovery card
+// is the primary path for drops; this is a last-resort cleanup.
+const HARD_CAP_MS = 90_000;
 
 export interface LabourIllusionState {
   revealedReport: FinalReport | null;
@@ -26,7 +32,13 @@ export interface LabourIllusionState {
 }
 
 /**
- * Holds `report` until a randomized 30–45 s timer elapses, then reveals it.
+ * Holds `report` until BOTH conditions are true:
+ *   1. At least FLOOR_MS has elapsed since `active` became true
+ *   2. The report has actually arrived from the backend
+ *
+ * If the real backend takes longer than FLOOR_MS, the floor is invisible —
+ * the report reveals as soon as it arrives. If it's faster, the report is
+ * buffered until the floor elapses.
  *
  * `active`     — true while analysis is running or result is being held.
  * `sessionKey` — pass the current ticker so the timer resets on new searches.
@@ -40,7 +52,7 @@ export function useLabourIllusion(
   const [revealedReport, setRevealedReport] = useState<FinalReport | null>(null);
 
   const startRef = useRef<number>(0);
-  const targetRef = useRef<number>(MIN_MS);
+  const targetRef = useRef<number>(FLOOR_MS);
   const reportRef = useRef<FinalReport | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -62,14 +74,14 @@ export function useLabourIllusion(
     if (!active) return;
 
     startRef.current = Date.now();
-    targetRef.current = MIN_MS + Math.floor(Math.random() * (MAX_MS - MIN_MS));
+    targetRef.current = FLOOR_MS;
 
     intervalRef.current = setInterval(() => {
       const now = Date.now() - startRef.current;
       setElapsed(now);
 
-      // Hard cap: stop timer if we've exceeded MAX_MS + 5s (backend may have errored)
-      if (now > MAX_MS + 5_000) {
+      // Hard cap: stop timer if we've waited well past the floor with no report
+      if (now > HARD_CAP_MS) {
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
@@ -102,6 +114,6 @@ export function useLabourIllusion(
   return {
     revealedReport,
     illusionMessage: currentStage.text,
-    progressPercent: Math.min(100, (elapsed / (targetRef.current || MIN_MS)) * 100),
+    progressPercent: Math.min(100, (elapsed / (targetRef.current || FLOOR_MS)) * 100),
   };
 }

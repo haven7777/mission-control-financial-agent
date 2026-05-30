@@ -4,11 +4,134 @@ import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { Database, BarChart3, Users, AlertTriangle, CheckCircle2, Scale, FileText, Mic } from "lucide-react"
+import type { ProgressPayload, ProgressStage } from "@/lib/api"
 
 interface LoadingSkeletonProps {
   query: string
+  stages: ProgressPayload[]
   complete?: boolean
   illusionMessage?: string
+}
+
+// ─── Weighted Progress System ────────────────────────────────────────────────
+// Replaces the old "every milestone is equally weighted" model that caused the
+// 90%-syndrome stall. Heavy LLM phases (Debate, Manager) own most of the bar.
+// Between milestones the bar creeps asymptotically toward the phase ceiling
+// using an exponential ease-out, so the user never sees a frozen 90%.
+
+const STAGE_WEIGHTS: Partial<Record<ProgressStage, number>> = {
+  data_complete: 5,
+  sentiment_complete: 5,
+  sentiment_unavailable: 5,
+  filings_complete: 5,
+  filings_unavailable: 5,
+  transcript_complete: 5,
+  transcript_unavailable: 5,
+  debate_complete: 40,
+  debate_skipped: 40,
+  approved: 40,
+}
+
+type Phase = "init" | "fast" | "debate" | "manager" | "done"
+
+// Cumulative weight ceiling reached by the END of each phase.
+const PHASE_CEILING: Record<Phase, number> = {
+  init: 0,
+  fast: 20,    // 4 parallel fast events × 5%
+  debate: 60,  // fast (20) + debate (40)
+  manager: 100, // debate (60) + manager+critic (40)
+  done: 100,
+}
+
+function detectPhase(stages: ProgressPayload[]): Phase {
+  const events = new Set(stages.map((s) => s.stage))
+  // Cache-hit short-circuit: delta_complete is the terminal signal.
+  if (events.has("approved") || events.has("delta_complete")) return "done"
+  if (events.has("synthesizing") || events.has("critiquing") || events.has("revising")) return "manager"
+  if (events.has("debating")) return "debate"
+  if (stages.length > 0) return "fast"
+  return "init"
+}
+
+function lockedWeight(stages: ProgressPayload[]): number {
+  return stages.reduce((acc, s) => acc + (STAGE_WEIGHTS[s.stage] ?? 0), 0)
+}
+
+/**
+ * Returns a 0–100 number that updates smoothly via a 100ms tick.
+ *
+ *   target = lockedWeight + remainingPhaseWeight * (1 - e^(-elapsed/τ)) * 0.95
+ *   displayed += (target - displayed) * 0.12   // ease toward target
+ *
+ * `0.95` keeps the asymptote 5% short of the phase ceiling so the bar can never
+ * hit the next milestone until the real event arrives — that's what kills the
+ * 90% stall. When `complete` flips true, target snaps to 100 and the displayed
+ * value catches up over a couple of frames.
+ */
+// Floor pacing: must match useLabourIllusion's FLOOR_MS. The bar's target is
+// the MIN of the weighted-phase target and this floor curve, so the bar can
+// never reach 99% before t=20s — no matter how fast the backend delivers.
+// Tuned so 99 × (1 − e^(−20000/4500)) ≈ 98.8% at the reveal moment.
+const FLOOR_PACING_TAU = 4500
+
+function useWeightedProgress(stages: ProgressPayload[], complete: boolean): number {
+  const [displayed, setDisplayed] = useState(0)
+  const phaseStartRef = useRef<number>(Date.now())
+  const streamStartRef = useRef<number>(Date.now())
+  const prevPhaseRef = useRef<Phase>("init")
+
+  // Reset the phase clock whenever the active phase changes. Without this the
+  // asymptote would keep growing across phase boundaries and the new phase
+  // would start mid-curve instead of getting its own fast initial slope.
+  useEffect(() => {
+    const phase = detectPhase(stages)
+    if (phase !== prevPhaseRef.current) {
+      phaseStartRef.current = Date.now()
+      prevPhaseRef.current = phase
+    }
+  }, [stages])
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      // Hard rule: while this hook is alive, target NEVER hits 100. The actual
+      // 100% moment is the page-level transition that unmounts this skeleton.
+      const PROCESSING_CAP = 99
+      const PHASE_CAP = 97
+
+      // ── Weighted-phase target (real backend progress) ─────────────────
+      const phase = detectPhase(stages)
+      const locked = lockedWeight(stages)
+      const ceiling = PHASE_CEILING[phase]
+      const phaseRemaining = Math.max(0, ceiling - locked)
+      const elapsedInPhase = Date.now() - phaseStartRef.current
+      const TAU = 7000 // ms; reaches ~95% of asymptote at ~21s
+      const asymptoticGain = phaseRemaining * (1 - Math.exp(-elapsedInPhase / TAU)) * 0.95
+      const weightedTarget =
+        phase === "done" || complete
+          ? PROCESSING_CAP
+          : Math.min(locked + asymptoticGain, PHASE_CAP)
+
+      // ── Floor pacing (20s minimum-display ceiling) ────────────────────
+      // Caps the bar so it can't outrun the labor illusion's FLOOR_MS hold.
+      // For cached searches the backend is done in ~2s and weightedTarget
+      // jumps to 99 instantly — without this cap, the bar would sit at 99
+      // for ~18 silent seconds. For uncached searches that take 25–50s the
+      // floor target rises faster than the weighted target and is non-binding.
+      const elapsedSinceStart = Date.now() - streamStartRef.current
+      const floorTarget = PROCESSING_CAP * (1 - Math.exp(-elapsedSinceStart / FLOOR_PACING_TAU))
+
+      const target = Math.min(weightedTarget, floorTarget)
+
+      setDisplayed((prev) => {
+        const gap = target - prev
+        if (Math.abs(gap) < 0.05) return target
+        return prev + gap * 0.12
+      })
+    }, 100)
+    return () => clearInterval(id)
+  }, [stages, complete])
+
+  return displayed
 }
 
 const agents = [
@@ -115,7 +238,11 @@ const ALL_COMPLETE = {
   transcript: { taskIndex: 3, complete: true },
 }
 
-export function LoadingSkeleton({ query, complete = false, illusionMessage }: LoadingSkeletonProps) {
+export function LoadingSkeleton({ query, stages, complete = false, illusionMessage }: LoadingSkeletonProps) {
+  // Weighted, asymptotic progress driven by real backend SSE events — replaces
+  // the old "fraction of fake agent cards complete" model.
+  const overallProgress = useWeightedProgress(stages, complete)
+
   const [agentStates, setAgentStates] = useState<
     Record<string, { taskIndex: number; complete: boolean }>
   >({
@@ -172,10 +299,6 @@ export function LoadingSkeleton({ query, complete = false, illusionMessage }: Lo
     }
   }, [])
 
-  const rawProgress =
-    Object.values(agentStates).filter((s) => s.complete).length / agents.length
-  const overallProgress = complete ? rawProgress : Math.min(0.9, rawProgress)
-
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-12">
       {/* Header */}
@@ -206,13 +329,13 @@ export function LoadingSkeleton({ query, complete = false, illusionMessage }: Lo
             strokeWidth="8"
             fill="none"
             strokeLinecap="round"
-            className="stroke-primary transition-all duration-500"
-            strokeDasharray={`${overallProgress * 264} 264`}
+            className="stroke-primary transition-[stroke-dasharray] duration-200 ease-out"
+            strokeDasharray={`${(overallProgress / 100) * 264} 264`}
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="text-2xl font-bold font-mono">
-            {Math.round(overallProgress * 100)}%
+            {Math.round(overallProgress)}%
           </span>
         </div>
       </div>

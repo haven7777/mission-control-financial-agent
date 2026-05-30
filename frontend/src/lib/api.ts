@@ -280,6 +280,11 @@ export function streamAnalysis(
   const controller = new AbortController();
   const url = `${API_BASE_URL}/api/analyze/${encodeURIComponent(trimmed)}/stream`;
 
+  // Track whether the stream reached a logical terminator (final `result` or
+  // a server-emitted `stream_error`). If the connection closes WITHOUT one of
+  // those, treat it as a mid-analysis drop and surface a recoverable error.
+  let cleanlyFinished = false;
+
   fetchEventSource(url, {
     signal: controller.signal,
     headers: masterCode ? { "X-Master-Code": masterCode } : {},
@@ -288,18 +293,34 @@ export function streamAnalysis(
       if (ev.event === "progress") {
         onEvent({ type: "progress", data: JSON.parse(ev.data) as ProgressPayload });
       } else if (ev.event === "result") {
+        cleanlyFinished = true;
         onEvent({ type: "result", data: JSON.parse(ev.data) as FinalReport });
         controller.abort();
       } else if (ev.event === "stream_error") {
+        cleanlyFinished = true;
         onEvent({ type: "stream_error", data: JSON.parse(ev.data) as { message: string } });
         controller.abort();
       }
     },
+    onclose() {
+      // Server-initiated close without a terminator = mid-analysis drop.
+      if (!cleanlyFinished) {
+        onEvent({
+          type: "connection_error",
+          data: { message: "Connection interrupted mid-analysis." },
+        });
+      }
+    },
     onerror() {
-      onEvent({ type: "connection_error", data: { message: "Lost connection to server." } });
+      if (!cleanlyFinished) {
+        onEvent({
+          type: "connection_error",
+          data: { message: "Connection interrupted mid-analysis." },
+        });
+      }
       controller.abort();
       // Throw to stop fetch-event-source's auto-retry loop. AbortController
-      // is the canonical cleanup path; this just prevents reconnect attempts.
+      // is the canonical cleanup path; the throw prevents reconnect attempts.
       throw new Error("stream closed");
     },
   }).catch(() => {
