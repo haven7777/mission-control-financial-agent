@@ -1,4 +1,7 @@
-"""Market data service backed by yfinance (Yahoo Finance).
+"""Market data service.
+
+Primary source: Financial Modeling Prep (FMP) — works reliably from cloud IPs.
+Fallback: yfinance — used when FMP key is absent (local dev without a key).
 
 Public surface is identical to the former Alpha Vantage implementation so all
 callers (data_agent, routers/quote, test patches) remain unchanged.
@@ -9,29 +12,22 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from typing import Any
 
+import httpx
 import yfinance as yf
-from curl_cffi import requests as cf_requests
 
 from app.models.financial import CompanyOverview, StockQuote
 from app.services.cache import TTLCache
 
-# Shared curl_cffi session that impersonates Chrome — bypasses Yahoo Finance's
-# bot detection and "Invalid Crumb" errors that occur on cloud server IPs.
-_yf_session = cf_requests.Session(impersonate="chrome")
-
-# One yfinance .info call returns both quote and overview data.
-# Cache the raw dict for 60 s so back-to-back calls (quote then overview in
-# the same pipeline run) hit the network only once per ticker per minute.
 _INFO_TTL_S = 60.0
-
 _info_cache: TTLCache[dict[str, Any]] = TTLCache(_INFO_TTL_S)
 
 log = logging.getLogger(__name__)
 
 
-# --- Exception hierarchy (interface-compatible with former AV service) --------
+# --- Exception hierarchy ------------------------------------------------------
 
 
 class DataFetchError(Exception):
@@ -64,7 +60,7 @@ class InvalidTickerError(DataFetchError):
         super().__init__(f"Unknown or empty ticker: {ticker!r}")
 
 
-# --- Internals ----------------------------------------------------------------
+# --- Helpers ------------------------------------------------------------------
 
 
 def _to_decimal(v: Any) -> Decimal | None:
@@ -76,26 +72,109 @@ def _to_decimal(v: Any) -> Decimal | None:
         return None
 
 
-def _fetch_info_raw(ticker: str) -> dict[str, Any]:
-    """Return the yfinance .info dict for *ticker*, using the cache when fresh."""
-    cached = _info_cache.get(ticker)
-    if cached is not None:
-        log.info("Cache hit: info %s", ticker)
-        return cached
+@lru_cache(maxsize=1)
+def _fmp_key() -> str | None:
+    from app.config import get_settings
+    return get_settings().fmp_api_key or None
 
+
+# --- FMP backend --------------------------------------------------------------
+
+
+def _fetch_fmp_raw(ticker: str) -> dict[str, Any]:
+    """Fetch combined quote + profile from FMP and normalize to yfinance-like dict."""
+    key = _fmp_key()
+    if not key:
+        raise DataFetchError("FMP_API_KEY not configured")
+
+    base = "https://financialmodelingprep.com/api/v3"
+    try:
+        with httpx.Client(timeout=15) as client:
+            q_resp = client.get(f"{base}/quote/{ticker}", params={"apikey": key})
+            p_resp = client.get(f"{base}/profile/{ticker}", params={"apikey": key})
+    except httpx.TimeoutException as exc:
+        raise TimeoutFetchError(f"FMP timed out for {ticker}") from exc
+    except Exception as exc:
+        raise DataFetchError(f"FMP request failed for {ticker}: {exc}") from exc
+
+    if q_resp.status_code == 429 or p_resp.status_code == 429:
+        raise RateLimitedError(f"FMP rate limit hit for {ticker}")
+    if not q_resp.is_success or not p_resp.is_success:
+        raise HTTPFetchError(q_resp.status_code, q_resp.text[:200])
+
+    quote_list = q_resp.json()
+    profile_list = p_resp.json()
+
+    if not quote_list or not isinstance(quote_list, list):
+        raise InvalidTickerError(ticker)
+
+    q = quote_list[0]
+    p = profile_list[0] if profile_list and isinstance(profile_list, list) else {}
+
+    # Normalize to yfinance .info shape so the rest of the code is unchanged
+    return {
+        "symbol": q.get("symbol", ticker),
+        "currentPrice": q.get("price"),
+        "previousClose": q.get("previousClose"),
+        "open": q.get("open"),
+        "dayHigh": q.get("dayHigh"),
+        "dayLow": q.get("dayLow"),
+        "volume": q.get("volume"),
+        "regularMarketTime": q.get("timestamp"),
+        # company overview fields
+        "longName": p.get("companyName") or q.get("name"),
+        "shortName": q.get("name"),
+        "quoteType": "EQUITY",
+        "longBusinessSummary": p.get("description") or "",
+        "exchange": p.get("exchangeShortName") or q.get("exchange") or "",
+        "currency": p.get("currency") or "USD",
+        "country": p.get("country") or "",
+        "sector": p.get("sector") or "",
+        "industry": p.get("industry") or "",
+        "marketCap": q.get("marketCap"),
+        "trailingPE": q.get("pe"),
+        "trailingEps": q.get("eps"),
+        "dividendYield": p.get("lastDiv"),
+        "beta": p.get("beta"),
+        "fiftyTwoWeekHigh": q.get("yearHigh"),
+        "fiftyTwoWeekLow": q.get("yearLow"),
+        "targetMeanPrice": p.get("dcf"),
+    }
+
+
+# --- yfinance fallback --------------------------------------------------------
+
+
+def _fetch_yf_raw(ticker: str) -> dict[str, Any]:
     log.info("Fetching yfinance info: %s", ticker)
     try:
-        raw: dict[str, Any] = yf.Ticker(ticker, session=_yf_session).info
+        raw: dict[str, Any] = yf.Ticker(ticker).info
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg or "timed out" in msg:
             raise TimeoutFetchError(f"yfinance timed out for {ticker}") from exc
         raise DataFetchError(f"yfinance fetch failed for {ticker}: {exc}") from exc
 
-    # yfinance returns a near-empty dict (e.g. {"trailingPegRatio": None}) for
-    # delisted or completely unknown tickers — detect before caching.
     if not raw or not raw.get("symbol"):
         raise InvalidTickerError(ticker)
+    return raw
+
+
+# --- Unified entry point ------------------------------------------------------
+
+
+def _fetch_info_raw(ticker: str) -> dict[str, Any]:
+    """Return a yfinance-shaped info dict, using cache and FMP-first strategy."""
+    cached = _info_cache.get(ticker)
+    if cached is not None:
+        log.info("Cache hit: info %s", ticker)
+        return cached
+
+    if _fmp_key():
+        log.info("Fetching FMP data: %s", ticker)
+        raw = _fetch_fmp_raw(ticker)
+    else:
+        raw = _fetch_yf_raw(ticker)
 
     _info_cache.set(ticker, raw)
     return raw
