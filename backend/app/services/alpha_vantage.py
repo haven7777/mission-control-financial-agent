@@ -12,9 +12,14 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import yfinance as yf
+from curl_cffi import requests as cf_requests
 
 from app.models.financial import CompanyOverview, StockQuote
 from app.services.cache import TTLCache
+
+# Shared curl_cffi session that impersonates Chrome — bypasses Yahoo Finance's
+# bot detection and "Invalid Crumb" errors that occur on cloud server IPs.
+_yf_session = cf_requests.Session(impersonate="chrome")
 
 # One yfinance .info call returns both quote and overview data.
 # Cache the raw dict for 60 s so back-to-back calls (quote then overview in
@@ -80,7 +85,7 @@ def _fetch_info_raw(ticker: str) -> dict[str, Any]:
 
     log.info("Fetching yfinance info: %s", ticker)
     try:
-        raw: dict[str, Any] = yf.Ticker(ticker).info
+        raw: dict[str, Any] = yf.Ticker(ticker, session=_yf_session).info
     except Exception as exc:
         msg = str(exc).lower()
         if "timeout" in msg or "timed out" in msg:
