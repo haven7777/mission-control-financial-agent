@@ -16,7 +16,7 @@ import { validateMasterCode } from "@/lib/api";
 interface PaywallModalProps {
   open: boolean;
   onClose: () => void;
-  onVipSuccess: (code: string) => void;
+  onVipSuccess: (code: string, credits: number) => void;
   isVipCodeUsed: (code: string) => boolean;
 }
 
@@ -31,6 +31,7 @@ export function PaywallModal({
   const [code, setCode] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [grantedCredits, setGrantedCredits] = useState<number>(3);
 
   useEffect(() => {
     if (open) {
@@ -61,10 +62,11 @@ export function PaywallModal({
     setSubmitState("loading");
     setErrorMsg(null);
 
-    const valid = await validateMasterCode(trimmed);
-    if (valid) {
+    const credits = await validateMasterCode(trimmed);
+    if (credits > 0) {
+      setGrantedCredits(credits);
       setSubmitState("success");
-      setTimeout(() => onVipSuccess(trimmed), 1500);
+      setTimeout(() => onVipSuccess(trimmed, credits), 1500);
     } else {
       setErrorMsg("Invalid VIP code. Please check and try again.");
       setSubmitState("error");
@@ -88,14 +90,14 @@ export function PaywallModal({
         {submitState === "success" ? (
           <div className="flex flex-col items-center gap-3 py-8">
             <CheckCircle2 className="w-12 h-12 text-success" />
-            <p className="font-semibold text-foreground text-lg">+3 analyses unlocked!</p>
+            <p className="font-semibold text-foreground text-lg">+{grantedCredits} analyses unlocked!</p>
             <p className="text-sm text-muted-foreground">Running your analysis…</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 mt-2">
             <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm text-muted-foreground">
               <Gift className="w-4 h-4 text-primary shrink-0" />
-              Each VIP code grants exactly +3 deep analyses. Codes are single-use.
+              VIP codes grant bonus analyses. Codes are single-use per device.
             </div>
             <Input
               placeholder="Enter VIP code…"

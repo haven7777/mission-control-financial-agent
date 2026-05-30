@@ -24,35 +24,46 @@ log = logging.getLogger(__name__)
 
 _CACHE_TTL_S: float = 300.0  # 5 minutes
 _cache_lock = threading.Lock()
-_code_cache: dict[str, tuple[bool, float]] = {}  # code -> (is_valid, expiry_monotonic)
+_code_cache: dict[str, tuple[bool, int, float]] = {}  # code -> (is_valid, credits, expiry_monotonic)
 
 
-def _validate_code(code: str) -> bool:
-    """Return True iff the code exists and is_active in master_codes. Non-fatal."""
+def _validate_code(code: str) -> tuple[bool, int]:
+    """Return (is_valid, credits) for the given code. Non-fatal on Supabase errors."""
     now = time.monotonic()
     with _cache_lock:
         entry = _code_cache.get(code)
         if entry is not None:
-            is_valid, expiry = entry
+            is_valid, credits, expiry = entry
             if now < expiry:
-                return is_valid
+                return is_valid, credits
 
     try:
         client = get_supabase_client()
         result = (
             client.table("master_codes")
-            .select("is_active")
+            .select("is_active, credits")
             .eq("code", code)
             .execute()
         )
-        is_valid = bool(result.data) and result.data[0]["is_active"] is True
+        if bool(result.data) and result.data[0]["is_active"] is True:
+            is_valid = True
+            credits = int(result.data[0].get("credits") or 3)
+        else:
+            is_valid = False
+            credits = 0
     except Exception:
         log.exception("master_code_auth: Supabase lookup failed")
-        return False
+        return False, 0
 
     with _cache_lock:
-        _code_cache[code] = (is_valid, now + _CACHE_TTL_S)
-    return is_valid
+        _code_cache[code] = (is_valid, credits, now + _CACHE_TTL_S)
+    return is_valid, credits
+
+
+def get_code_credits(code: str) -> int:
+    """Return the credits for a code (assumes already validated). Cached."""
+    _, credits = _validate_code(code)
+    return credits
 
 
 def require_master_code(
@@ -69,7 +80,8 @@ def require_master_code(
             status_code=401,
             detail="Deep Research requires a Master Code (X-Master-Code header).",
         )
-    if not _validate_code(x_master_code):
+    is_valid, _ = _validate_code(x_master_code)
+    if not is_valid:
         raise HTTPException(
             status_code=403,
             detail="Master Code is invalid or has been deactivated.",

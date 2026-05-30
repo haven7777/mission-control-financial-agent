@@ -293,10 +293,10 @@ export default function Home() {
     );
   }, []);
 
-  function handleVipSuccess(code: string) {
+  function handleVipSuccess(code: string, credits: number) {
     markVipCodeUsed(code);
-    addCredits(3);    // +3 to balance (functional update)
-    consumeCredit();  // -1 for the pending deep search (batched after addCredits)
+    addCredits(credits);  // credits from backend (per-code amount)
+    consumeCredit();      // -1 for the pending search
     setShowPaywallModal(false);
     if (pendingTicker) {
       setTicker(pendingTicker);

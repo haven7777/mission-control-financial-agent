@@ -188,15 +188,17 @@ export function fetchAnalysis(ticker: string): Promise<FinalReport> {
   });
 }
 
-/** Validate a Master Code against the backend. Returns true if valid. */
-export async function validateMasterCode(code: string): Promise<boolean> {
+/** Validate a Master Code. Returns credits granted (>0) if valid, 0 if invalid. */
+export async function validateMasterCode(code: string): Promise<number> {
   try {
     const res = await fetch(`${API_BASE_URL}/api/auth/ping`, {
       headers: { "X-Master-Code": code },
     });
-    return res.ok;
+    if (!res.ok) return 0;
+    const data = (await res.json()) as { credits?: number };
+    return data.credits ?? 3;
   } catch {
-    return false;
+    return 0;
   }
 }
 

@@ -40,8 +40,8 @@ export function MasterCodeDialog({ open, onSuccess, onCancel }: MasterCodeDialog
     setLoading(true);
     setError(null);
 
-    const valid = await validateMasterCode(trimmed);
-    if (valid) {
+    const credits = await validateMasterCode(trimmed);
+    if (credits > 0) {
       setMasterCode(trimmed);
       onSuccess(trimmed);
     } else {
