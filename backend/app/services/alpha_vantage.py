@@ -106,14 +106,17 @@ def _fetch_twelvedata_raw(ticker: str) -> dict[str, Any]:
 
     if q_resp.status_code == 429:
         raise RateLimitedError(f"Twelve Data rate limit hit for {ticker}")
-    if not q_resp.is_success:
-        raise HTTPFetchError(q_resp.status_code, q_resp.text[:200])
 
-    q = q_resp.json()
+    q = q_resp.json() if q_resp.content else {}
 
-    # Twelve Data returns HTTP 200 with an error body on invalid symbol/key
-    if q.get("status") == "error" or q.get("code"):
-        msg = q.get("message", str(q))
+    # Twelve Data signals errors via HTTP 4xx or a 200 body with status=error
+    if not q_resp.is_success or q.get("status") == "error" or q.get("code") == 404:
+        # 404 = ticker not in Twelve Data — treat as unknown ticker, not a crash
+        if q_resp.status_code == 404 or q.get("code") == 404:
+            raise InvalidTickerError(ticker)
+        if q_resp.status_code == 401 or q_resp.status_code == 403:
+            raise DataFetchError(f"Twelve Data auth error: {q.get('message', q_resp.text[:100])}")
+        msg = q.get("message", q_resp.text[:200])
         raise DataFetchError(f"Twelve Data error for {ticker}: {msg}")
 
     if not q.get("symbol"):
