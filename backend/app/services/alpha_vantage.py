@@ -1,7 +1,7 @@
 """Market data service.
 
-Primary source: Financial Modeling Prep (FMP) — works reliably from cloud IPs.
-Fallback: yfinance — used when FMP key is absent (local dev without a key).
+Primary source: Twelve Data — works reliably from cloud IPs, free tier 800/day.
+Fallback: yfinance — used when Twelve Data key is absent (local dev).
 
 Public surface is identical to the former Alpha Vantage implementation so all
 callers (data_agent, routers/quote, test patches) remain unchanged.
@@ -73,72 +73,88 @@ def _to_decimal(v: Any) -> Decimal | None:
 
 
 @lru_cache(maxsize=1)
-def _fmp_key() -> str | None:
+def _td_key() -> str | None:
     from app.config import get_settings
-    return get_settings().fmp_api_key or None
+    return get_settings().twelvedata_api_key or None
 
 
-# --- FMP backend --------------------------------------------------------------
+# --- Twelve Data backend ------------------------------------------------------
+
+_TD_BASE = "https://api.twelvedata.com"
 
 
-def _fetch_fmp_raw(ticker: str) -> dict[str, Any]:
-    """Fetch combined quote + profile from FMP and normalize to yfinance-like dict."""
-    key = _fmp_key()
+def _fetch_twelvedata_raw(ticker: str) -> dict[str, Any]:
+    """Fetch quote + statistics from Twelve Data and normalize to yfinance-like dict."""
+    key = _td_key()
     if not key:
-        raise DataFetchError("FMP_API_KEY not configured")
+        raise DataFetchError("TWELVEDATA_API_KEY not configured")
 
-    base = "https://financialmodelingprep.com/api/v3"
     try:
         with httpx.Client(timeout=15) as client:
-            q_resp = client.get(f"{base}/quote/{ticker}", params={"apikey": key})
-            p_resp = client.get(f"{base}/profile/{ticker}", params={"apikey": key})
+            q_resp = client.get(
+                f"{_TD_BASE}/quote",
+                params={"symbol": ticker, "apikey": key},
+            )
+            s_resp = client.get(
+                f"{_TD_BASE}/statistics",
+                params={"symbol": ticker, "apikey": key},
+            )
     except httpx.TimeoutException as exc:
-        raise TimeoutFetchError(f"FMP timed out for {ticker}") from exc
+        raise TimeoutFetchError(f"Twelve Data timed out for {ticker}") from exc
     except Exception as exc:
-        raise DataFetchError(f"FMP request failed for {ticker}: {exc}") from exc
+        raise DataFetchError(f"Twelve Data request failed for {ticker}: {exc}") from exc
 
-    if q_resp.status_code == 429 or p_resp.status_code == 429:
-        raise RateLimitedError(f"FMP rate limit hit for {ticker}")
-    if not q_resp.is_success or not p_resp.is_success:
+    if q_resp.status_code == 429:
+        raise RateLimitedError(f"Twelve Data rate limit hit for {ticker}")
+    if not q_resp.is_success:
         raise HTTPFetchError(q_resp.status_code, q_resp.text[:200])
 
-    quote_list = q_resp.json()
-    profile_list = p_resp.json()
+    q = q_resp.json()
 
-    if not quote_list or not isinstance(quote_list, list):
+    # Twelve Data returns HTTP 200 with an error body on invalid symbol/key
+    if q.get("status") == "error" or q.get("code"):
+        msg = q.get("message", str(q))
+        raise DataFetchError(f"Twelve Data error for {ticker}: {msg}")
+
+    if not q.get("symbol"):
         raise InvalidTickerError(ticker)
 
-    q = quote_list[0]
-    p = profile_list[0] if profile_list and isinstance(profile_list, list) else {}
+    # Statistics are best-effort — not all tickers have them
+    s = s_resp.json() if s_resp.is_success else {}
+    stats = s.get("statistics", {})
+    valuations = stats.get("valuations_metrics", {})
+    financials = stats.get("financials", {})
+    stock_stats = stats.get("stock_statistics", {})
+    company_info = stats.get("company_information", {})
+    fw = q.get("fifty_two_week") or {}
 
-    # Normalize to yfinance .info shape so the rest of the code is unchanged
     return {
         "symbol": q.get("symbol", ticker),
-        "currentPrice": q.get("price"),
-        "previousClose": q.get("previousClose"),
+        "currentPrice": q.get("close"),
+        "previousClose": q.get("previous_close"),
         "open": q.get("open"),
-        "dayHigh": q.get("dayHigh"),
-        "dayLow": q.get("dayLow"),
+        "dayHigh": q.get("high"),
+        "dayLow": q.get("low"),
         "volume": q.get("volume"),
         "regularMarketTime": q.get("timestamp"),
-        # company overview fields
-        "longName": p.get("companyName") or q.get("name"),
+        # company overview
+        "longName": q.get("name"),
         "shortName": q.get("name"),
         "quoteType": "EQUITY",
-        "longBusinessSummary": p.get("description") or "",
-        "exchange": p.get("exchangeShortName") or q.get("exchange") or "",
-        "currency": p.get("currency") or "USD",
-        "country": p.get("country") or "",
-        "sector": p.get("sector") or "",
-        "industry": p.get("industry") or "",
-        "marketCap": q.get("marketCap"),
-        "trailingPE": q.get("pe"),
-        "trailingEps": q.get("eps"),
-        "dividendYield": p.get("lastDiv"),
-        "beta": p.get("beta"),
-        "fiftyTwoWeekHigh": q.get("yearHigh"),
-        "fiftyTwoWeekLow": q.get("yearLow"),
-        "targetMeanPrice": p.get("dcf"),
+        "longBusinessSummary": company_info.get("description") or "",
+        "exchange": q.get("exchange") or "",
+        "currency": q.get("currency") or "USD",
+        "country": company_info.get("country") or "",
+        "sector": company_info.get("sector") or "",
+        "industry": company_info.get("industry") or "",
+        "marketCap": stock_stats.get("market_capitalization"),
+        "trailingPE": valuations.get("trailing_pe"),
+        "trailingEps": financials.get("eps_ttm"),
+        "dividendYield": financials.get("dividend_yield"),
+        "beta": stock_stats.get("beta"),
+        "fiftyTwoWeekHigh": fw.get("high"),
+        "fiftyTwoWeekLow": fw.get("low"),
+        "targetMeanPrice": None,
     }
 
 
@@ -164,15 +180,15 @@ def _fetch_yf_raw(ticker: str) -> dict[str, Any]:
 
 
 def _fetch_info_raw(ticker: str) -> dict[str, Any]:
-    """Return a yfinance-shaped info dict, using cache and FMP-first strategy."""
+    """Return a yfinance-shaped info dict, using cache and Twelve Data-first strategy."""
     cached = _info_cache.get(ticker)
     if cached is not None:
         log.info("Cache hit: info %s", ticker)
         return cached
 
-    if _fmp_key():
-        log.info("Fetching FMP data: %s", ticker)
-        raw = _fetch_fmp_raw(ticker)
+    if _td_key():
+        log.info("Fetching Twelve Data: %s", ticker)
+        raw = _fetch_twelvedata_raw(ticker)
     else:
         raw = _fetch_yf_raw(ticker)
 

@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     groq_api_key: str | None = None
     tavily_api_key: str | None = None
     fmp_api_key: str | None = None
+    twelvedata_api_key: str | None = None
 
     # LLM model selection
     groq_model: str = Field(
