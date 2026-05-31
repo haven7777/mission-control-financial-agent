@@ -67,17 +67,19 @@ export function SynthesisConsole({ report, confidence, executiveSummary }: Synth
     <div className="space-y-10">
       {/* Top Row: Sentiment Badge + Confidence Gauge + Summary */}
       <div className="flex flex-wrap items-start gap-8">
-        {/* Sentiment Badge */}
-        <div className={cn("flex items-center gap-5 px-8 py-6 rounded-2xl border-2 shrink-0", getSentimentColor())}>
-          {getSentimentIcon()}
-          <div>
-            <p className="text-xs uppercase tracking-wider opacity-80 mb-1">Overall Sentiment</p>
-            <p className="text-3xl font-bold tracking-tight">{sentiment}</p>
+        {/* Sentiment + Gauge grouped so they stay vertically centered when Executive Summary is tall */}
+        <div className="flex items-center gap-8 shrink-0 self-stretch">
+          {/* Sentiment Badge */}
+          <div className={cn("flex items-center gap-5 px-8 py-6 rounded-2xl border-2 shrink-0", getSentimentColor())}>
+            {getSentimentIcon()}
+            <div>
+              <p className="text-xs uppercase tracking-wider opacity-80 mb-1">Overall Sentiment</p>
+              <p className="text-3xl font-bold tracking-tight">{sentiment}</p>
+            </div>
           </div>
-        </div>
 
-        {/* Confidence Gauge */}
-        <div className="relative flex items-center justify-center shrink-0">
+          {/* Confidence Gauge */}
+          <div className="relative flex items-center justify-center shrink-0">
           <svg className="w-36 h-36 -rotate-90">
             <circle cx="72" cy="72" r="60" fill="none" stroke="currentColor" strokeWidth="10" className="text-muted/20" />
             <circle
@@ -94,7 +96,7 @@ export function SynthesisConsole({ report, confidence, executiveSummary }: Synth
             <span className="text-4xl font-mono font-bold">{animatedConfidence}%</span>
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger className="text-sm text-muted-foreground mt-1 cursor-help underline decoration-dotted underline-offset-2">
+                <TooltipTrigger className="text-xs text-white mt-1 cursor-help underline decoration-dotted underline-offset-2">
                   Signal Strength
                 </TooltipTrigger>
                 <TooltipContent
@@ -108,6 +110,7 @@ export function SynthesisConsole({ report, confidence, executiveSummary }: Synth
             </TooltipProvider>
           </div>
         </div>
+        </div>
 
         {/* Executive Summary */}
         <div className="flex-1 min-w-[300px] p-6 rounded-2xl bg-muted/10 border border-border/30">
@@ -117,7 +120,7 @@ export function SynthesisConsole({ report, confidence, executiveSummary }: Synth
           </div>
           <p className="text-foreground text-lg leading-relaxed">{report.one_line_summary}</p>
           {executiveSummary && (
-            <p className="text-sm text-muted-foreground/80 leading-relaxed mt-3 italic border-l-2 border-primary/30 pl-3">
+            <p className="text-base text-white/80 leading-relaxed mt-3 border-l-2 border-primary/30 pl-3">
               {executiveSummary}
             </p>
           )}
