@@ -22,6 +22,8 @@ class NewsArticle(BaseModel):
     content: str = Field(description="Snippet / summary text from the provider.")
     score: float | None = Field(default=None, description="Provider relevance score, 0-1.")
     published_date: datetime | None = None
+    
+    raw_content: str | None = Field(default=None, description="Full raw text/HTML of the article.")
 
     @field_validator("published_date", mode="before")
     @classmethod
