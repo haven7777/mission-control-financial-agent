@@ -260,21 +260,29 @@ def _format_sentiment(sent: SentimentAgentReport) -> str:
             "Sentiment analysis is unavailable. Base your synthesis on the "
             "quantitative fundamentals only and note the absence of news coverage."
         )
+    
     lines = [
         f"Overall news sentiment: {sent.overall_sentiment.value} "
         f"(confidence {sent.overall_confidence:.2f})",
         f"Articles analyzed: {sent.articles_analyzed}",
         "Per-article breakdown:",
     ]
+    
     for i, ca in enumerate(sent.classified, start=1):
         lines.append(
             f"  [{i}] {ca.sentiment.value} ({ca.confidence:.2f}) — {ca.article.title}"
         )
         lines.append(f"      reason: {ca.reason}")
         
-        content_text = (ca.article.content or "").strip()[:1000]
+        # הגדלנו את טווח הקריאה ל-3000 תווים כדי שהמודל יגיע לבשר של הכתבה
+        content_text = (ca.article.content or "").strip()[:3000]
         if content_text:
             lines.append(f"      content: {content_text}...")
+
+    # --- הזרקת הטקסט המלא ללוגים של Render כדי שתוכל לדבג בלי טרמינל מקומי ---
+    log.info("====== TEXT SENT TO DEBATE AGENTS ======")
+    log.info("\n".join(lines))
+    log.info("========================================")
             
     return "\n".join(lines)
 
