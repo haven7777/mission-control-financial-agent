@@ -94,7 +94,7 @@ def _fetch_news_node(state: _SentimentAgentState) -> dict:
         NewsArticle(
             title=a["title"],
             url=a["url"],
-            content=a["content"],
+            content=a.get("raw_content", a.get("content", "")),
             published_date=a.get("published_date"),
         )
         for a in raw.get("articles", [])
