@@ -38,20 +38,23 @@ _SYSTEM_PROMPT = (
     "1. Every argument must cite a specific metric, ratio, trend, or headline "
     "from the context.\n"
     "2. Highlight undervaluation, growth catalysts, and positive momentum.\n"
-    "3. If news sentiment is unavailable, focus entirely on fundamentals.\n\n"
+    "3. If news sentiment is unavailable, focus entirely on fundamentals.\n"
+    "4. SPECIFICITY: You MUST explicitly extract and name the company's specific flagship products, "
+    "titles, drugs, or software versions ONLY IF they are explicitly mentioned in the provided context. "
+    "Never use generic umbrella terms like 'upcoming releases' when the exact name is available in the data, "
+    "but NEVER invent or hallucinate product names.\n\n"
     "## thesis field\n"
     "Write a cohesive FUTURE-FACING narrative paragraph of 3-4 sentences about the NEXT 12-24 MONTHS. "
     "Focus on strategic positioning, upcoming catalysts, and market psychology. "
-    "Use forward-looking language: 'expected to capitalize on', 'positioned to benefit from', "
-    "'over the next 12 months'. "
-    "CRITICAL: Do NOT include bullet points, numbered lists, or mathematical breakdowns — "
+    "CRITICAL: Vary your opening statements. Do NOT use generic templates like 'Over the next 12 months...'. "
+    "Start directly with your strongest, most provocative core thesis. "
+    "Do NOT include bullet points, numbered lists, or mathematical breakdowns — "
     "flowing prose only. Do NOT describe the current 52-week price range. "
     "Do NOT simply restate the same data points from key_arguments — analyze what they imply for the future.\n\n"
     "Respond as a JSON object matching this exact schema:\n"
     '{"ticker": "<TICKER>", '
     '"thesis": "<cohesive 3-4 sentence forward-looking narrative — NO bullets>"}'
 )
-
 
 def run_bull_agent(
     data: DataAgentReport,
