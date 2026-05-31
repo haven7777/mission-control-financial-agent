@@ -71,6 +71,7 @@ def search(
     max_results: int = 5,
     search_depth: str = "basic",
     days: int | None = None,
+    include_raw_content: bool = False,
 ) -> NewsSearchResult:
     """Run a Tavily search.
 
@@ -91,7 +92,7 @@ def search(
         "search_depth": search_depth,
         "max_results": bounded_max,
         "include_answer": False,
-        "include_raw_content": False,
+        "include_raw_content": include_raw_content,  
         "include_images": False,
     }
 
