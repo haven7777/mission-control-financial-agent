@@ -271,6 +271,11 @@ def _format_sentiment(sent: SentimentAgentReport) -> str:
             f"  [{i}] {ca.sentiment.value} ({ca.confidence:.2f}) — {ca.article.title}"
         )
         lines.append(f"      reason: {ca.reason}")
+        
+        content_text = (ca.article.content or "").strip()[:1000]
+        if content_text:
+            lines.append(f"      content: {content_text}...")
+            
     return "\n".join(lines)
 
 
