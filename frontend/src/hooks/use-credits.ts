@@ -55,5 +55,7 @@ export function useCredits() {
     });
   }
 
-  return { credits, consumeCredit, addCredits, isVipCodeUsed, markVipCodeUsed };
+  const hasRedeemedBonus = usedVipCodes.length > 0;
+
+  return { credits, consumeCredit, addCredits, isVipCodeUsed, markVipCodeUsed, hasRedeemedBonus };
 }

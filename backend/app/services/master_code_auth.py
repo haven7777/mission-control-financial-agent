@@ -76,10 +76,7 @@ def require_master_code(
     blocking Supabase call in _validate_code.
     """
     if not x_master_code:
-        raise HTTPException(
-            status_code=401,
-            detail="Deep Research requires a Master Code (X-Master-Code header).",
-        )
+        return  # Free-tier: frontend credits gate access; no header = allow through
     is_valid, _ = _validate_code(x_master_code)
     if not is_valid:
         raise HTTPException(

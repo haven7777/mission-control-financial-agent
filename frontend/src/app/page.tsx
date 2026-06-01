@@ -216,7 +216,7 @@ export default function Home() {
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [pendingTicker, setPendingTicker] = useState<string | null>(null);
 
-  const { credits, consumeCredit, addCredits, isVipCodeUsed, markVipCodeUsed } = useCredits();
+  const { credits, consumeCredit, addCredits, isVipCodeUsed, markVipCodeUsed, hasRedeemedBonus } = useCredits();
 
   // Deep mode: SSE stream with auth + Labor Illusion
   const deepTicker = mode === "deep" && ticker && !ticker.startsWith("__PENDING__") ? ticker : null;
@@ -258,14 +258,7 @@ export default function Home() {
       return;
     }
 
-    // Deep mode: master code gate (existing flow).
-    if (!masterCode) {
-      setShowCodeDialog(true);
-      setTicker(`__PENDING__${first}`);
-      return;
-    }
-
-    // Deep mode: credit gate.
+    // Deep mode: credit gate only.
     if (credits <= 0) {
       setPendingTicker(first);
       setShowPaywallModal(true);
@@ -274,15 +267,12 @@ export default function Home() {
 
     consumeCredit();
     setTicker(first);
-  }, [mode, masterCode, credits, consumeCredit]);
+  }, [mode, credits, consumeCredit]);
 
   const handleModeChange = useCallback((newMode: ResearchMode) => {
     setMode(newMode);
     setTicker(null);
-    if (newMode === "deep" && !masterCode) {
-      setShowCodeDialog(true);
-    }
-  }, [masterCode]);
+  }, []);
 
   const handleCodeSuccess = useCallback((code: string) => {
     setMasterCodeState(code);
@@ -293,10 +283,12 @@ export default function Home() {
     );
   }, []);
 
-  function handleVipSuccess(code: string, credits: number) {
+  function handleVipSuccess(code: string, newCredits: number) {
     markVipCodeUsed(code);
-    addCredits(credits);  // credits from backend (per-code amount)
-    consumeCredit();      // -1 for the pending search
+    addCredits(newCredits);
+    consumeCredit();
+    setMasterCodeState(code);
+    setMasterCode(code);
     setShowPaywallModal(false);
     if (pendingTicker) {
       setTicker(pendingTicker);
@@ -399,11 +391,6 @@ export default function Home() {
   // ── Search (idle + error) ─────────────────────────────────────────────────
   return (
     <>
-      <MasterCodeDialog
-        open={showCodeDialog}
-        onSuccess={handleCodeSuccess}
-        onCancel={handleCodeCancel}
-      />
       <PaywallModal
         open={showPaywallModal}
         onClose={() => { setShowPaywallModal(false); setPendingTicker(null); }}
@@ -420,6 +407,7 @@ export default function Home() {
         mode={mode}
         onModeChange={handleModeChange}
         credits={credits}
+        deepLocked={credits <= 0 && hasRedeemedBonus}
       />
     </>
   );

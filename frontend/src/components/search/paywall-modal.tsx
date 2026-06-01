@@ -100,7 +100,7 @@ export function PaywallModal({
               VIP codes grant bonus analyses. Codes are single-use per device.
             </div>
             <Input
-              placeholder="Enter VIP code…"
+              placeholder="Enter access code…"
               value={code}
               onChange={handleCodeChange}
               className="font-mono"

@@ -66,7 +66,7 @@ export function MasterCodeDialog({ open, onSuccess, onCancel }: MasterCodeDialog
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <Input
-            placeholder="Enter Master Code (e.g. DEEP-RESEARCH-BETA-2026)"
+            placeholder="Enter your access code"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             className="font-mono"

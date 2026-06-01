@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Search, TrendingUp, Cpu, Rocket, Zap, ChevronRight, Sparkles } from "lucide-react"
+import { Search, TrendingUp, Cpu, Rocket, Zap, ChevronRight, Sparkles, Lock } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { fetchQuote } from "@/lib/api"
@@ -13,6 +13,7 @@ interface SearchHomeProps {
   mode: ResearchMode;
   onModeChange: (mode: ResearchMode) => void;
   credits?: number;
+  deepLocked?: boolean;
 }
 
 const popularStocks = [
@@ -67,7 +68,7 @@ const categories = [
   },
 ]
 
-export function SearchHome({ onSearch, mode, onModeChange, credits }: SearchHomeProps) {
+export function SearchHome({ onSearch, mode, onModeChange, credits, deepLocked }: SearchHomeProps) {
   const [query, setQuery] = useState("")
   const [isFocused, setIsFocused] = useState(false)
   const [livePcts, setLivePcts] = useState<Record<string, string>>({})
@@ -158,29 +159,44 @@ export function SearchHome({ onSearch, mode, onModeChange, credits }: SearchHome
           <Zap className="w-4 h-4" />
           Fast
         </button>
-        <button
-          onClick={() => onModeChange("deep")}
-          className={cn(
-            "flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all",
-            mode === "deep"
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Sparkles className="w-4 h-4" />
-          Deep Research
-          {credits !== undefined && (
-            <span className={cn(
-              "text-xs font-mono px-1.5 py-0.5 rounded-md",
-              credits > 0
-                ? "bg-success/15 text-success"
-                : "bg-destructive/15 text-destructive",
-              mode === "deep" && "bg-white/15 text-white"
-            )}>
-              {credits}
-            </span>
-          )}
-        </button>
+        {deepLocked ? (
+          <div className="relative group">
+            <button
+              disabled
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-muted-foreground opacity-50 cursor-not-allowed"
+            >
+              <Lock className="w-4 h-4" />
+              Deep Research
+            </button>
+            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-64 p-2 rounded-lg bg-popover border border-border text-xs text-muted-foreground shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 text-center">
+              You&apos;ve run out of credits. Mission Control is still in beta.
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => onModeChange("deep")}
+            className={cn(
+              "flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-all",
+              mode === "deep"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Sparkles className="w-4 h-4" />
+            Deep Research
+            {credits !== undefined && (
+              <span className={cn(
+                "text-xs font-mono px-1.5 py-0.5 rounded-md",
+                credits > 0
+                  ? "bg-success/15 text-success"
+                  : "bg-destructive/15 text-destructive",
+                mode === "deep" && "bg-white/15 text-white"
+              )}>
+                {credits}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
