@@ -35,6 +35,7 @@ from app.models.manager import FinalReport
 from app.services.alpha_vantage import (
     DataFetchError,
     InvalidTickerError,
+    fetch_global_quote,
 )
 from app.services.tavily import MissingNewsAPIKey, NewsFetchError
 from app.services.report_cache import get_cached_report, store_report
@@ -83,6 +84,15 @@ def analyze(
     if cached is not None:
         log.info("analyze: cache hit for %s", normalized)
         return cached
+
+    # Fast ticker validation: raises InvalidTickerError immediately if the ticker
+    # doesn't exist. Also warms _info_cache so run_data_agent gets a cache hit.
+    try:
+        fetch_global_quote(normalized)
+    except InvalidTickerError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DataFetchError:
+        pass  # Non-fatal — let the pipeline handle upstream issues
 
     try:
         report = run_fast_analysis(normalized)
