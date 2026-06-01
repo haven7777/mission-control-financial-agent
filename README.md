@@ -4,10 +4,9 @@
 
 ### Institutional-grade AI stock research, powered by adversarial multi-agent debate
 
-🚀 **[Live Demo: Mission Control](#)** &nbsp;·&nbsp; 📊 **[Sample PDF Report](#)** &nbsp;·&nbsp; 📖 **[Architecture Deep Dive](#technical-architecture)**
+🚀 **[Live Demo](https://frontend-seven-swart-31.vercel.app)** &nbsp;·&nbsp; 📖 **[Architecture Deep Dive](#technical-architecture)**
 
-![Hero Banner](docs/assets/hero.png)
-<!-- Replace with: animated GIF of a Deep search → SSE progress → results dashboard transition -->
+![Home — Mission Control search interface](docs/assets/01-home.png)
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19-149ECA?logo=react)](https://react.dev)
@@ -36,9 +35,11 @@ Two modes serve different needs:
 | **Fast** | ~5 s | Data + Sentiment + Manager | One-line view, key strengths/risks, sentiment snapshot |
 | **Deep** | ~30-50 s | Full multi-agent pipeline with debate, SEC, transcripts, critic loop | Bull vs. Bear narrative, executive summary, management tone analysis, exportable PDF |
 
-> 📸 **Screenshot — Results Dashboard**
-> ![Results Dashboard](docs/assets/results-dashboard.png)
-> *The synthesis console, bull/bear debate panel, management tone analysis, and supporting data tables.*
+![Fast Mode — Synthesis Console, Key Strengths & Risks](docs/assets/02-fast-result.png)
+*Fast mode: Synthesis Console with overall sentiment, signal strength, key strengths & risks. Results in ~5s.*
+
+![Loading — AI agents processing](docs/assets/03-loading.png)
+*Real-time progress display during analysis with weighted asymptotic progress bar.*
 
 ---
 
@@ -57,9 +58,6 @@ Beyond the AI features, Mission Control is an exercise in **production-grade UX 
 
 ## Technical Architecture
 
-> 🗺️ **Architecture Diagram**
-> ![Architecture Diagram](docs/assets/architecture.png)
-> *Next.js frontend ↔ FastAPI gateway ↔ LangGraph multi-agent pipeline ↔ External data sources (yfinance, Tavily, EDGAR, FMP, OpenAI) ↔ Supabase cache.*
 
 ### The multi-agent LangGraph pipeline
 
