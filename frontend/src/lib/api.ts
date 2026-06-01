@@ -154,22 +154,36 @@ export class ApiFetchError extends Error {
 // Backwards-compat alias for the existing quote page.
 export { ApiFetchError as QuoteFetchError };
 
+function sanitizeApiError(status: number): string {
+  if (status === 404) return "Ticker not found. Please check the symbol and try again.";
+  if (status === 429) return "Too many requests. Please wait a moment and try again.";
+  if (status === 401 || status === 403) return "Access denied. Please check your credentials.";
+  if (status >= 500) return "Service temporarily unavailable. Please try again.";
+  return "Something went wrong. Please try again.";
+}
+
+export function sanitizeError(err: unknown): string {
+  if (err instanceof TypeError && err.message.includes("fetch"))
+    return "Unable to connect. Please check your connection.";
+  if (err instanceof ApiFetchError) return sanitizeApiError(err.status);
+  return "Something went wrong. Please try again.";
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 async function _getJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Accept: "application/json" },
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: { Accept: "application/json" },
+      ...init,
+    });
+  } catch {
+    throw new ApiFetchError(0, "Unable to connect. Please check your connection.");
+  }
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as
-      | { detail?: string }
-      | null;
-    throw new ApiFetchError(
-      response.status,
-      body?.detail ?? `Request failed: HTTP ${response.status}`,
-    );
+    throw new ApiFetchError(response.status, sanitizeApiError(response.status));
   }
   return (await response.json()) as T;
 }
@@ -211,12 +225,13 @@ export async function exportPdf(
   const url = `${API_BASE_URL}/api/export/pdf${rtl ? "?rtl=true" : ""}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (masterCode) headers["X-Master-Code"] = masterCode;
-  const resp = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(report),
-  });
-  if (!resp.ok) throw new Error(`PDF export failed: ${resp.status}`);
+  let resp: Response;
+  try {
+    resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(report) });
+  } catch {
+    throw new Error("Unable to connect. Please check your connection.");
+  }
+  if (!resp.ok) throw new Error("PDF generation failed. Please try again.");
   const blob = await resp.blob();
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");

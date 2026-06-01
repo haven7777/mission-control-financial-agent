@@ -24,6 +24,7 @@ import { Terminal } from "lucide-react";
 import {
   streamAnalysis,
   fetchAnalysis,
+  sanitizeError,
   type FinalReport,
   type ProgressPayload,
   type ProgressStage,
@@ -78,7 +79,13 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
         // Both "stream_error" (server-side) and "connection_error" (network
         // drop) land here. The hook treats them identically — the consumer
         // shows the recovery card and lets the user retry.
-        setState((prev) => ({ ...prev, status: "error", error: event.data.message }));
+        const raw = event.data.message ?? "";
+        const clean = raw.includes("Connection interrupted")
+          ? "The connection was interrupted. Please try again."
+          : raw.toLowerCase().includes("not found") || raw.includes("404")
+          ? "Ticker not found. Please check the symbol and try again."
+          : "Analysis failed. Please try again.";
+        setState((prev) => ({ ...prev, status: "error", error: clean }));
       }
     }, masterCode);
 
@@ -121,7 +128,7 @@ function useFastAnalysis(ticker: string | null): {
     );
     Promise.all([fetchAnalysis(ticker), minDelay])
       .then(([report]) => { if (!cancelled) setState({ status: "done", report, error: null }); })
-      .catch((err: Error) => { if (!cancelled) setState({ status: "error", report: null, error: err.message }); });
+      .catch((err: unknown) => { if (!cancelled) setState({ status: "error", report: null, error: sanitizeError(err) }); });
     return () => { cancelled = true; };
   }, [ticker]);
 
