@@ -50,11 +50,10 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
   const [exportError, setExportError] = useState<string | null>(null)
 
   async function handleExportPdf() {
-    if (!masterCode) return
     setExporting(true)
     setExportError(null)
     try {
-      await exportPdf(report, masterCode)
+      await exportPdf(report, masterCode ?? null)
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Export failed")
     } finally {

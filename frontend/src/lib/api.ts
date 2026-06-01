@@ -205,16 +205,15 @@ export async function validateMasterCode(code: string): Promise<number> {
 /** Export a FinalReport as a PDF file download. Requires a valid Master Code. */
 export async function exportPdf(
   report: FinalReport,
-  masterCode: string,
+  masterCode: string | null = null,
   rtl = false,
 ): Promise<void> {
   const url = `${API_BASE_URL}/api/export/pdf${rtl ? "?rtl=true" : ""}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (masterCode) headers["X-Master-Code"] = masterCode;
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Master-Code": masterCode,
-    },
+    headers,
     body: JSON.stringify(report),
   });
   if (!resp.ok) throw new Error(`PDF export failed: ${resp.status}`);
