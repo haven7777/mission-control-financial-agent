@@ -35,11 +35,23 @@ Two modes serve different needs:
 | **Fast** | ~5 s | Data + Sentiment + Manager | One-line view, key strengths/risks, sentiment snapshot |
 | **Deep** | ~30-50 s | Full multi-agent pipeline with debate, SEC, transcripts, critic loop | Bull vs. Bear narrative, executive summary, management tone analysis, exportable PDF |
 
-![Fast Mode — Synthesis Console, Key Strengths & Risks](docs/assets/02-fast-result.png)
-*Fast mode: Synthesis Console with overall sentiment, signal strength, key strengths & risks. Results in ~5s.*
+### Fast Mode — Results in ~5s
+
+![Fast Mode — NVDA Synthesis Console](docs/assets/02-fast-result.png)
+*Synthesis Console with overall sentiment, signal strength, executive summary, key strengths & risks.*
+
+### Deep Mode — Full Institutional Analysis
+
+![Deep Mode — AMZN Synthesis Console](docs/assets/04-deep-result.png)
+*Deep mode adds real-time market data, news sentiment panel, and the full multi-agent pipeline output.*
+
+![Deep Mode — AI Debate Bull vs. Bear](docs/assets/05-deep-bull-bear.png)
+*Bull Agent and Bear Agent argue the thesis in parallel — Manager synthesises, Critic audits.*
+
+### Loading — Live Agent Progress
 
 ![Loading — AI agents processing](docs/assets/03-loading.png)
-*Real-time progress display during analysis with weighted asymptotic progress bar.*
+*Real-time progress display with weighted asymptotic progress bar. Never stalls at 90%.*
 
 ---
 
