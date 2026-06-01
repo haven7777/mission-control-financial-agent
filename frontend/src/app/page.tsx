@@ -109,12 +109,14 @@ function useFastAnalysis(ticker: string | null): {
   status: "idle" | "loading" | "done" | "error";
   report: FinalReport | null;
   error: string | null;
+  retry: () => void;
 } {
   const [state, setState] = useState<{
     status: "idle" | "loading" | "done" | "error";
     report: FinalReport | null;
     error: string | null;
   }>({ status: "idle", report: null, error: null });
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     if (!ticker) {
@@ -126,13 +128,20 @@ function useFastAnalysis(ticker: string | null): {
     const minDelay = new Promise<void>((res) =>
       setTimeout(res, 2500 + Math.random() * 1000)
     );
-    Promise.all([fetchAnalysis(ticker), minDelay])
-      .then(([report]) => { if (!cancelled) setState({ status: "done", report, error: null }); })
-      .catch((err: unknown) => { if (!cancelled) setState({ status: "error", report: null, error: sanitizeError(err) }); });
+    // Errors bypass minDelay so invalid tickers surface immediately.
+    fetchAnalysis(ticker)
+      .then(async (report) => {
+        await minDelay;
+        if (!cancelled) setState({ status: "done", report, error: null });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setState({ status: "error", report: null, error: sanitizeError(err) });
+      });
     return () => { cancelled = true; };
-  }, [ticker]);
+  }, [ticker, retryNonce]);
 
-  return state;
+  const retry = useCallback(() => setRetryNonce((n) => n + 1), []);
+  return { ...state, retry };
 }
 
 // ---------------------------------------------------------------------------
@@ -324,13 +333,8 @@ export default function Home() {
     );
   }
 
-  // ── Stream Error Recovery ────────────────────────────────────────────────
-  // A Deep-mode stream that dropped or errored before delivering a result.
-  // The labor illusion has already stopped (isActive=false because report is null);
-  // we show a premium recovery card with a Try Again button that re-runs the
-  // same ticker via the hook's retry().
+  // ── Error Recovery (both modes) ──────────────────────────────────────────
   if (
-    mode === "deep" &&
     status === "error" &&
     error &&
     !displayReport &&
@@ -340,11 +344,11 @@ export default function Home() {
     return (
       <div className="h-screen flex flex-col bg-background">
         <DashboardHeader query={ticker} onBack={() => setTicker(null)} status="processing" />
-        <div className="flex-1 overflow-auto flex items-center">
+        <div className="flex-1 overflow-auto flex items-center justify-center">
           <StreamErrorCard
             ticker={ticker}
             message={error}
-            onRetry={streamState.retry}
+            onRetry={mode === "deep" ? streamState.retry : fastState.retry}
             onBack={() => setTicker(null)}
           />
         </div>
@@ -404,11 +408,6 @@ export default function Home() {
         onVipSuccess={handleVipSuccess}
         isVipCodeUsed={isVipCodeUsed}
       />
-      {status === "error" && error && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm max-w-md text-center">
-          {error}
-        </div>
-      )}
       <SearchHome
         onSearch={handleSearch}
         mode={mode}
