@@ -5,6 +5,7 @@
 ### Institutional-grade AI stock research, powered by adversarial multi-agent debate
 
 🚀 **[Live Demo](https://frontend-seven-swart-31.vercel.app)** &nbsp;·&nbsp; 📖 **[Architecture Deep Dive](#technical-architecture)**
+### Use this code for 3 extra deep mode uses: DEEP-RESEARCH-BETA-2026
 
 ![Home — Mission Control search interface](docs/assets/01-home.png)
 
