@@ -34,6 +34,12 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    html {
+      background: #0f172a;
     }
 
     body {
@@ -134,8 +140,9 @@
     }
     .data-grid td {
       padding: 5px 10px;
-      border-bottom: 1px solid #334155;
+      border: 1px solid #334155;
       color: #e2e8f0;
+      background: #0f172a;
     }
     .data-grid tr:nth-child(even) td { background: #1e293b; }
     .data-grid td:last-child {
@@ -197,8 +204,9 @@
     }
     .sentiment-table td {
       padding: 5px 10px;
-      border-bottom: 1px solid #334155;
+      border: 1px solid #334155;
       color: #e2e8f0;
+      background: #0f172a;
     }
     .sentiment-table tr:nth-child(even) td { background: #1e293b; }
 
