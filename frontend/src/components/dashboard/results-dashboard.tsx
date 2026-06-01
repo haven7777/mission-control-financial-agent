@@ -93,10 +93,25 @@ export function ResultsDashboard({ ticker, report, terminalEvents, confidence, o
           </div>
         )}
         <Sheet open={terminalOpen} onOpenChange={setTerminalOpen}>
-          <SheetTrigger className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm font-medium border border-border/50">
-            <Terminal className="w-4 h-4 text-primary" />
-            <span>Under the Hood</span>
-          </SheetTrigger>
+          {mode === "deep" ? (
+            <SheetTrigger className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-sm font-medium border border-border/50">
+              <Terminal className="w-4 h-4 text-primary" />
+              <span>Under the Hood</span>
+            </SheetTrigger>
+          ) : (
+            <div className="relative group">
+              <button
+                disabled
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 text-sm font-medium border border-border/50 opacity-40 cursor-not-allowed"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Under the Hood</span>
+              </button>
+              <div className="absolute right-0 top-full mt-1 w-64 p-2 rounded-lg bg-popover border border-border text-xs text-muted-foreground shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                PRO Feature: Run Deep Research to access Under the Hood analysis.
+              </div>
+            </div>
+          )}
           <SheetContent side="right" className="w-[480px] sm:w-[540px] p-0 bg-[#0a0f14] border-l border-border/50">
             <SheetHeader className="px-6 py-4 border-b border-border/30">
               <SheetTitle className="flex items-center gap-3 text-foreground">
