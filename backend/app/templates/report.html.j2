@@ -12,21 +12,7 @@
     /* ── Page Layout ──────────────────────────────────────────── */
     @page {
       size: A4;
-      margin: 20mm;
-
-      @top-center {
-        content: "{{ report.company_name }} ({{ report.ticker }}) — Confidential Financial Analysis";
-        font-size: 8pt;
-        color: #94a3b8;
-        font-family: sans-serif;
-      }
-
-      @bottom-center {
-        content: "Page " counter(page) " of " counter(pages);
-        font-size: 8pt;
-        color: #94a3b8;
-        font-family: sans-serif;
-      }
+      margin: 0;
     }
 
     /* ── Base Typography ──────────────────────────────────────── */
@@ -38,7 +24,7 @@
       -webkit-print-color-adjust: exact;
     }
 
-    html {
+    html, body {
       background: #0f172a;
     }
 
@@ -51,7 +37,8 @@
       font-size: 10pt;
       line-height: 1.55;
       color: #e2e8f0;
-      background: #0f172a;
+      /* padding replaces @page margins so body covers the full canvas */
+      padding: 20mm 20mm 16mm 20mm;
     }
 
     h1 { font-size: 18pt; font-weight: 700; color: #f8fafc; margin-bottom: 4px; }
@@ -124,13 +111,17 @@
     .data-grid {
       width: 100%;
       border-collapse: collapse;
+      table-layout: fixed;
       font-size: 9.5pt;
       margin-bottom: 10px;
     }
+    .data-grid col.label { width: 55%; }
+    .data-grid col.value { width: 45%; }
     .data-grid th {
       background: #1e40af;
       color: #ffffff;
       padding: 6px 10px;
+      border: 1px solid #334155;
       {% if rtl %}
       text-align: right;
       {% else %}
@@ -143,6 +134,9 @@
       border: 1px solid #334155;
       color: #e2e8f0;
       background: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      vertical-align: middle;
     }
     .data-grid tr:nth-child(even) td { background: #1e293b; }
     .data-grid td:last-child {
@@ -259,54 +253,41 @@
 
       {# Table 1: Price & Valuation #}
       <table class="data-grid">
+        <colgroup><col class="label"><col class="value"></colgroup>
         <thead>
           <tr><th colspan="2">Price &amp; Valuation</th></tr>
         </thead>
         <tbody>
           <tr>
             <td>Price</td>
-            <td>
-              {% if report.data_snapshot.quote.price %}
-                ${{ "%.2f"|format(report.data_snapshot.quote.price|float) }}
-                {% if report.data_snapshot.quote.change_percent and report.data_snapshot.quote.change_percent != 0 %}
-                  {% if report.data_snapshot.quote.change_percent > 0 %}
-                    <span style="color:#4ade80">(+{{ "%.2f"|format(report.data_snapshot.quote.change_percent|float) }}%)</span>
-                  {% else %}
-                    <span style="color:#f87171">({{ "%.2f"|format(report.data_snapshot.quote.change_percent|float) }}%)</span>
-                  {% endif %}
-                {% endif %}
-              {% else %}N/A{% endif %}
-            </td>
+            <td>{% if report.data_snapshot.quote.price is not none and report.data_snapshot.quote.price != '' %}{{ "$%.2f"|format(report.data_snapshot.quote.price|float) }}{% if report.data_snapshot.quote.change_percent and report.data_snapshot.quote.change_percent != 0 %} <span style="color:{% if report.data_snapshot.quote.change_percent > 0 %}#4ade80{% else %}#f87171{% endif %};">({% if report.data_snapshot.quote.change_percent > 0 %}+{% endif %}{{ "%.2f"|format(report.data_snapshot.quote.change_percent|float) }}%)</span>{% endif %}{% else %}N/A{% endif %}</td>
           </tr>
           <tr>
             <td>52W High</td>
-            <td>{% if report.data_snapshot.overview.week_52_high %}${{ "%.2f"|format(report.data_snapshot.overview.week_52_high|float) }}{% else %}N/A{% endif %}</td>
+            <td>{% if report.data_snapshot.overview.week_52_high is not none and report.data_snapshot.overview.week_52_high != '' %}{{ "$%.2f"|format(report.data_snapshot.overview.week_52_high|float) }}{% else %}N/A{% endif %}</td>
           </tr>
           <tr>
             <td>52W Low</td>
-            <td>{% if report.data_snapshot.overview.week_52_low %}${{ "%.2f"|format(report.data_snapshot.overview.week_52_low|float) }}{% else %}N/A{% endif %}</td>
+            <td>{% if report.data_snapshot.overview.week_52_low is not none and report.data_snapshot.overview.week_52_low != '' %}{{ "$%.2f"|format(report.data_snapshot.overview.week_52_low|float) }}{% else %}N/A{% endif %}</td>
           </tr>
           <tr>
             <td>Market Cap</td>
-            <td>
-              {% if report.data_snapshot.overview.market_capitalization %}
-                ${{ "{:,.0f}".format(report.data_snapshot.overview.market_capitalization) }}
-              {% else %}N/A{% endif %}
-            </td>
+            <td>{% if report.data_snapshot.overview.market_capitalization is not none and report.data_snapshot.overview.market_capitalization != '' %}{{ "$%,.0f"|format(report.data_snapshot.overview.market_capitalization|float) }}{% else %}N/A{% endif %}</td>
           </tr>
           <tr>
             <td>P/E Ratio</td>
-            <td>{% if report.data_snapshot.overview.pe_ratio %}{{ "%.2f"|format(report.data_snapshot.overview.pe_ratio|float) }}{% else %}N/A{% endif %}</td>
+            <td>{% if report.data_snapshot.overview.pe_ratio is not none and report.data_snapshot.overview.pe_ratio != '' %}{{ "%.2f"|format(report.data_snapshot.overview.pe_ratio|float) }}{% else %}N/A{% endif %}</td>
           </tr>
           <tr>
             <td>EPS</td>
-            <td>{% if report.data_snapshot.overview.eps %}${{ "%.2f"|format(report.data_snapshot.overview.eps|float) }}{% else %}N/A{% endif %}</td>
+            <td>{% if report.data_snapshot.overview.eps is not none and report.data_snapshot.overview.eps != '' %}{{ "$%.2f"|format(report.data_snapshot.overview.eps|float) }}{% else %}N/A{% endif %}</td>
           </tr>
         </tbody>
       </table>
 
       {# Table 2: Financial Metrics #}
       <table class="data-grid">
+        <colgroup><col class="label"><col class="value"></colgroup>
         <thead>
           <tr><th colspan="2">Financial Metrics</th></tr>
         </thead>
