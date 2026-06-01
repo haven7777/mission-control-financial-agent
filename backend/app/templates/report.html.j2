@@ -272,7 +272,7 @@
           </tr>
           <tr>
             <td>Market Cap</td>
-            <td>{% if report.data_snapshot.overview.market_capitalization is not none and report.data_snapshot.overview.market_capitalization != '' %}{{ "$%,.0f"|format(report.data_snapshot.overview.market_capitalization|float) }}{% else %}N/A{% endif %}</td>
+            <td>{% if report.data_snapshot.overview.market_capitalization is not none and report.data_snapshot.overview.market_capitalization != '' %}{{ "$" ~ "{:,.0f}".format(report.data_snapshot.overview.market_capitalization|float) }}{% else %}N/A{% endif %}</td>
           </tr>
           <tr>
             <td>P/E Ratio</td>
