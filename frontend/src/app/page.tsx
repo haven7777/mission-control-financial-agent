@@ -43,6 +43,7 @@ interface StreamState {
   stages: ProgressPayload[];
   report: FinalReport | null;
   error: string | null;
+  isTickerNotFound: boolean;
   retry: () => void;
 }
 
@@ -52,6 +53,7 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
     stages: [],
     report: null,
     error: null,
+    isTickerNotFound: false,
   });
 
   // Bumping `retryNonce` re-runs the effect with the same ticker — that's how
@@ -64,11 +66,11 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
     cleanupRef.current = null;
 
     if (!ticker) {
-      setState({ status: "idle", stages: [], report: null, error: null });
+      setState({ status: "idle", stages: [], report: null, error: null, isTickerNotFound: false });
       return;
     }
 
-    setState({ status: "streaming", stages: [], report: null, error: null });
+    setState({ status: "streaming", stages: [], report: null, error: null, isTickerNotFound: false });
 
     const cleanup = streamAnalysis(ticker, (event) => {
       if (event.type === "progress") {
@@ -80,12 +82,17 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
         // drop) land here. The hook treats them identically — the consumer
         // shows the recovery card and lets the user retry.
         const raw = event.data.message ?? "";
+        const code = event.type === "stream_error" ? (event.data.code ?? "") : "";
+        const isTickerNotFound =
+          code === "ticker_not_found" ||
+          raw.toLowerCase().includes("not found") ||
+          raw.includes("404");
         const clean = raw.includes("Connection interrupted")
           ? "The connection was interrupted. Please try again."
-          : raw.toLowerCase().includes("not found") || raw.includes("404")
+          : isTickerNotFound
           ? "Ticker not found. Please check the symbol and try again."
           : "Analysis failed. Please try again.";
-        setState((prev) => ({ ...prev, status: "error", error: clean }));
+        setState((prev) => ({ ...prev, status: "error", error: clean, isTickerNotFound }));
       }
     }, masterCode);
 
@@ -232,11 +239,29 @@ export default function Home() {
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [pendingTicker, setPendingTicker] = useState<string | null>(null);
 
-  const { credits, consumeCredit, addCredits, isVipCodeUsed, markVipCodeUsed, hasRedeemedBonus } = useCredits();
+  const { credits, consumeCredit, refundCredit, addCredits, isVipCodeUsed, markVipCodeUsed, hasRedeemedBonus } = useCredits();
 
   // Deep mode: SSE stream with auth + Labor Illusion
   const deepTicker = mode === "deep" && ticker && !ticker.startsWith("__PENDING__") ? ticker : null;
   const streamState = useAnalysisStream(deepTicker, masterCode);
+
+  // Refund the credit when deep mode fails on an invalid ticker.
+  // Guard with a ref so we refund at most once per handleSearch call, not on retries.
+  const creditRefundedRef = useRef(false);
+  useEffect(() => {
+    creditRefundedRef.current = false;
+  }, [ticker]);
+  useEffect(() => {
+    if (
+      mode === "deep" &&
+      streamState.status === "error" &&
+      streamState.isTickerNotFound &&
+      !creditRefundedRef.current
+    ) {
+      creditRefundedRef.current = true;
+      refundCredit();
+    }
+  }, [mode, streamState.status, streamState.isTickerNotFound, refundCredit]);
 
   // Fast mode: sync fetch, no auth, no illusion
   const fastTicker = mode === "fast" && ticker && !ticker.startsWith("__PENDING__") ? ticker : null;

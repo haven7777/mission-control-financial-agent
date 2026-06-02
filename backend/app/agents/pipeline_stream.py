@@ -46,6 +46,7 @@ from app.models.debate import BearCase, BullCase
 from app.models.filings import FilingsContext
 from app.models.manager import FinalReport
 from app.models.sentiment import Sentiment, SentimentAgentReport
+from app.services.alpha_vantage import DataFetchError, InvalidTickerError, fetch_global_quote
 from app.services.report_cache import get_cached_report, store_report
 
 log = logging.getLogger(__name__)
@@ -55,8 +56,11 @@ def _progress(stage: str, message: str) -> dict:
     return {"event": "progress", "data": {"stage": stage, "message": message}}
 
 
-def _stream_error(message: str) -> dict:
-    return {"event": "stream_error", "data": {"message": message}}
+def _stream_error(message: str, code: str | None = None) -> dict:
+    data: dict = {"message": message}
+    if code:
+        data["code"] = code
+    return {"event": "stream_error", "data": data}
 
 
 def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
@@ -108,6 +112,17 @@ def run_full_analysis_stream(ticker: str) -> Iterator[dict]:
         return
 
     yield _progress("cache_miss", "No recent cache — running full analysis…")
+
+    # ── Early ticker validation (mirrors sync endpoint) ───────────────────────
+    # Validate before launching expensive threads so an invalid ticker fails fast
+    # without consuming backend resources or frontend credits.
+    try:
+        fetch_global_quote(normalized)
+    except InvalidTickerError as exc:
+        yield _stream_error(str(exc), code="ticker_not_found")
+        return
+    except DataFetchError:
+        pass  # Non-fatal — let the pipeline handle upstream issues
 
     # ── Phase 1: Data + Sentiment + Filings in parallel ──────────────────────
 

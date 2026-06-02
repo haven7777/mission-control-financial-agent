@@ -4,7 +4,15 @@
 # Current Status & Task Tracker
 
 ## 🎯 Current Focus
-**V4.0 QA Sprint is COMPLETE as of 2026-05-29. All 12 punch-list fixes shipped. PLG credit system + UX upgrades shipped on top. App is production-ready for beta. Next: deploy to production or continue PLG growth features.**
+**V4.0 QA Sprint + hotfix shipped. App is production-ready for beta. Next: deploy to production or continue PLG growth features.**
+
+**Just Completed (2026-06-02) — Hotfix: Invalid-ticker credit refund:**
+- **Bug:** In Deep mode, a credit was consumed in `handleSearch` before the SSE stream started. If the ticker was invalid, the backend eventually emitted a `stream_error` after already burning the credit.
+- **Backend fix (`pipeline_stream.py`):** Added early ticker validation (mirrors the sync endpoint) — calls `fetch_global_quote` before launching data/sentiment/filings/transcript threads. On `InvalidTickerError`, yields `stream_error` with `code: "ticker_not_found"` immediately and returns, preventing wasted thread work.
+- **Frontend fix (`api.ts`):** Added `code?: string` to the `stream_error` data type.
+- **Frontend fix (`use-credits.ts`):** Added `refundCredit()` function (inverse of `consumeCredit`).
+- **Frontend fix (`page.tsx`):** `useAnalysisStream` now exposes `isTickerNotFound` flag. `Home` component uses a `useRef`-guarded `useEffect` to call `refundCredit()` exactly once per search when deep mode errors on an invalid ticker. Retries (via the "Try Again" button) do not re-consume or over-refund credits.
+- TypeScript build: clean.
 
 **Just Completed (2026-05-29) — V4.0 QA Sprint + PLG & UX Upgrades:**
 - **Fix 1 — Fast Pipeline:** `run_fast_analysis()` in `pipeline.py` (Data + Sentiment + Manager only, no EDGAR/FMP/debate/critic). Sync `/api/analyze/{ticker}` endpoint switched to fast pipeline. `financial_metrics.py` yfinance `t.info` wrapped in `ThreadPoolExecutor` with 5s timeout.

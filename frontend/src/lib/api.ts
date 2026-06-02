@@ -273,7 +273,7 @@ export type ProgressPayload = { stage: ProgressStage; message: string };
 export type StreamEvent =
   | { type: "progress"; data: ProgressPayload }
   | { type: "result"; data: FinalReport }
-  | { type: "stream_error"; data: { message: string } }
+  | { type: "stream_error"; data: { message: string; code?: string } }
   | { type: "connection_error"; data: { message: string } };
 
 /**

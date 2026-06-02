@@ -34,6 +34,14 @@ export function useCredits() {
     });
   }
 
+  function refundCredit(): void {
+    setCredits((prev) => {
+      const next = prev + 1;
+      localStorage.setItem(CREDITS_KEY, String(next));
+      return next;
+    });
+  }
+
   function addCredits(n: number): void {
     setCredits((prev) => {
       const next = prev + n;
@@ -57,5 +65,5 @@ export function useCredits() {
 
   const hasRedeemedBonus = usedVipCodes.length > 0;
 
-  return { credits, consumeCredit, addCredits, isVipCodeUsed, markVipCodeUsed, hasRedeemedBonus };
+  return { credits, consumeCredit, refundCredit, addCredits, isVipCodeUsed, markVipCodeUsed, hasRedeemedBonus };
 }
