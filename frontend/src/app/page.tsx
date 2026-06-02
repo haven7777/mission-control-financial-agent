@@ -83,10 +83,7 @@ function useAnalysisStream(ticker: string | null, masterCode: string | null): St
         // shows the recovery card and lets the user retry.
         const raw = event.data.message ?? "";
         const code = event.type === "stream_error" ? (event.data.code ?? "") : "";
-        const isTickerNotFound =
-          code === "ticker_not_found" ||
-          raw.toLowerCase().includes("not found") ||
-          raw.includes("404");
+        const isTickerNotFound = code === "ticker_not_found";
         const clean = raw.includes("Connection interrupted")
           ? "The connection was interrupted. Please try again."
           : isTickerNotFound

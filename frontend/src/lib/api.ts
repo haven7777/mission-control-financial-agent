@@ -314,7 +314,7 @@ export function streamAnalysis(
         controller.abort();
       } else if (ev.event === "stream_error") {
         cleanlyFinished = true;
-        onEvent({ type: "stream_error", data: JSON.parse(ev.data) as { message: string } });
+        onEvent({ type: "stream_error", data: JSON.parse(ev.data) as { message: string; code?: string } });
         controller.abort();
       }
     },

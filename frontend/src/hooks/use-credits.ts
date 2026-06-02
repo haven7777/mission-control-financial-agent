@@ -15,7 +15,8 @@ export function useCredits() {
   useEffect(() => {
     const rawCredits = localStorage.getItem(CREDITS_KEY);
     if (rawCredits !== null) {
-      setCredits(Math.max(0, parseInt(rawCredits, 10)));
+      const parsed = parseInt(rawCredits, 10);
+      setCredits(isNaN(parsed) ? 0 : Math.max(0, parsed));
     }
     try {
       const rawVip = localStorage.getItem(USED_VIP_KEY);
