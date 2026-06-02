@@ -243,11 +243,10 @@ export default function Home() {
   const streamState = useAnalysisStream(deepTicker, masterCode);
 
   // Refund the credit when deep mode fails on an invalid ticker.
-  // Guard with a ref so we refund at most once per handleSearch call, not on retries.
+  // Reset in handleSearch/handleVipSuccess (synchronously, at consume time) — NOT in a
+  // useEffect([ticker]) because that effect fires after render when isTickerNotFound is
+  // still stale-true from the previous error, which causes a spurious extra refund.
   const creditRefundedRef = useRef(false);
-  useEffect(() => {
-    creditRefundedRef.current = false;
-  }, [ticker]);
   useEffect(() => {
     if (
       mode === "deep" &&
@@ -303,6 +302,7 @@ export default function Home() {
       return;
     }
 
+    creditRefundedRef.current = false;
     consumeCredit();
     setTicker(first);
   }, [mode, credits, consumeCredit]);
@@ -324,6 +324,7 @@ export default function Home() {
   function handleVipSuccess(code: string, newCredits: number) {
     markVipCodeUsed(code);
     addCredits(newCredits);
+    creditRefundedRef.current = false;
     consumeCredit();
     setMasterCodeState(code);
     setMasterCode(code);
